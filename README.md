@@ -1,13 +1,4 @@
 # webserv
-Te voy a explicar **una estructura típica de Webserv que pasa las evaluaciones de 42**, pensada para:
-
-* C++98
-* proyecto grande en equipo
-* fácil de explicar en la defensa
-* modular
-
-Además te la organizo **por archivos y responsabilidades**, que es lo que te preguntan siempre en la evaluación.
-
 ---
 
 # 1. Estructura general del proyecto
