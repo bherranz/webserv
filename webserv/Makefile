@@ -3,25 +3,26 @@
 #                                                         :::      ::::::::    #
 #    Makefile                                           :+:      :+:    :+:    #
 #                                                     +:+ +:+         +:+      #
-#    By: miparis <miparis@student.42madrid.com>     +#+  +:+       +#+         #
+#    By: jaime <jaime@student.42.fr>                +#+  +:+       +#+         #
 #                                                 +#+#+#+#+#+   +#+            #
 #    Created: 2026/03/20 15:49:56 by miparis           #+#    #+#              #
-#    Updated: 2026/03/20 15:53:47 by miparis          ###   ########.fr        #
+#    Updated: 2026/03/31 17:10:02 by jaime            ###   ########.fr        #
 #                                                                              #
 # **************************************************************************** #
 
 
 NAME = Webserv
 
-SRCS =  CgiHandler.cpp \
-		Config.cpp \
-		ConfigParser.cpp \
-		HttpRequest.cpp \
-		HttpResponse.cpp \
-		Router.cpp \
-		Client.cpp \
-		Server.cpp \
-		Utils.cpp
+SRCS =  src/main.cpp \
+		src/server/Server.cpp \
+		src/server/Client.cpp \
+#		src/http/Router.cpp \
+#		src/http/HttpRequest.cpp \
+#		src/http/HttpResponse.cpp \
+#		src/cgi/CgiHandler.cpp \
+#		src/config/Config.cpp \
+#		src/config/ConfigParser.cpp \
+#		src/utils/Utils.cpp
 
 # Define Colors
 GREEN  := \033[1;32m  # Bold Green
@@ -45,8 +46,11 @@ REMOVE = rm -f
 all: $(NAME)
 
 $(NAME): $(OBJS)
-	@$(CC) $(CFLAGS) $(CPPFLAGS) $(OBJS) -o $(NAME)
+	@$(CC) $(CFLAGS) $(CPPFLAGS) -Iincludes $(OBJS) -o $(NAME)
 	@echo "$(BOLD)$(BLUE) 🖥️ Webserv operating $(NC)"
+
+%.o: %.cpp
+	@$(CC) $(CFLAGS) $(CPPFLAGS) -Iincludes -c $< -o $@
 
 clean:
 	@$(REMOVE) $(OBJS)
