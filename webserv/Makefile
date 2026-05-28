@@ -3,10 +3,10 @@
 #                                                         :::      ::::::::    #
 #    Makefile                                           :+:      :+:    :+:    #
 #                                                     +:+ +:+         +:+      #
-#    By: jaime <jaime@student.42.fr>                +#+  +:+       +#+         #
+#    By: miparis <miparis@student.42madrid.com>     +#+  +:+       +#+         #
 #                                                 +#+#+#+#+#+   +#+            #
 #    Created: 2026/03/20 15:49:56 by miparis           #+#    #+#              #
-#    Updated: 2026/05/28 13:05:00 by jaime            ###   ########.fr        #
+#    Updated: 2026/05/28 15:13:12 by miparis          ###   ########.fr        #
 #                                                                              #
 # **************************************************************************** #
 
@@ -17,7 +17,8 @@ SRCS =  src/main.cpp \
 		src/server/Server.cpp \
 		src/server/Client.cpp \
 		src/config/Config.cpp \
-		src/config/ConfigParser.cpp
+		src/config/ConfigParser.cpp \
+		src/http/HttpRequest.cpp
 
 # Define Colors
 GREEN  := \033[1;32m  # Bold Green

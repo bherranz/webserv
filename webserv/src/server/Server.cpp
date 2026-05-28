@@ -3,14 +3,15 @@
 /*                                                        :::      ::::::::   */
 /*   Server.cpp                                         :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
-/*   By: jaime <jaime@student.42.fr>                +#+  +:+       +#+        */
+/*   By: miparis <miparis@student.42madrid.com>     +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/03/20 15:54:10 by miparis           #+#    #+#             */
-/*   Updated: 2026/05/28 13:05:00 by jaime            ###   ########.fr       */
+/*   Updated: 2026/05/28 15:36:14 by miparis          ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
 #include "Server.hpp"
+#include "HttpRequest.hpp"
 
 #include <iostream>
 #include <cstring>
@@ -176,22 +177,53 @@ void Server::acceptClients(int listenFd) {
 	}
 }
 
-void Server::handleClientRead(int fd) {
+void Server::handleClientRead(int fd)
+{
 	std::map<int, Client>::iterator it = _clients.find(fd);
 	if (it == _clients.end())
 		return;
 
 	char buf[4096];
-	while (true) {
+	while (true)
+	{
 		ssize_t n = ::recv(fd, buf, sizeof(buf), 0);
-		if (n > 0) {
+		if (n > 0)
+		{
 			it->second.inBuffer().append(buf, n);
-			if (it->second.outBuffer().empty()) {
-				it->second.outBuffer() = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nOK";
+			if (it->second.inBuffer().find("\r\n\r\n") != std::string::npos)
+			{
+				HttpRequest request;
+				std::cout << "RAW REQUEST:" << std::endl;
+				std::cout << it->second.inBuffer() << std::endl;
+				if (request.parse(it->second.inBuffer()))
+				{
+					std::cout << "METHOD: "
+							<< request._method
+							<< std::endl;
+
+					std::cout << "PATH: "
+							<< request._path
+							<< std::endl;
+
+					std::cout << "VERSION: "
+							<< request._version
+							<< std::endl;
+				}
+				request.printRequest();
+				if (it->second.outBuffer().empty())
+				{
+					it->second.outBuffer() =
+						"HTTP/1.1 200 OK\r\n"
+						"Content-Length: 2\r\n"
+						"\r\n"
+						"OK";
+				}
+
+				it->second.inBuffer().clear();
 			}
-			continue;
 		}
-		if (n == 0) {
+		if (n == 0)
+		{
 			closeClient(fd);
 			return;
 		}
