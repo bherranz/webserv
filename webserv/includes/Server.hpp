@@ -6,11 +6,12 @@
 #include <string>
 #include <poll.h>
 
+#include "Config.hpp"
 #include "Client.hpp"
 
 class Server {
 public:
-	explicit Server(int port);
+	explicit Server(const Config &config);
 	~Server();
 
 	void run();
@@ -19,17 +20,20 @@ private:
 	Server(const Server &);
 	Server &operator=(const Server &);
 
-	void initListenSocket();
+	void initListenSockets();
+	void openListenSocket(const ListenConfig &listenConfig, std::size_t serverIndex);
 	void setNonBlocking(int fd);
 
 	void rebuildPollFds();
-	void acceptClients();
+	void acceptClients(int listenFd);
 	void handleClientRead(int fd);
 	void handleClientWrite(int fd);
 	void closeClient(int fd);
+	bool isListenFd(int fd) const;
 
-	int _port;
-	int _listenFd;
+	Config _config;
+	std::vector<int> _listenFds;
+	std::map<int, std::size_t> _listenOwners;
 	std::vector<struct pollfd> _pollFds;
 	std::map<int, Client> _clients;
 };

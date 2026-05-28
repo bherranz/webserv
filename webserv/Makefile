@@ -6,7 +6,7 @@
 #    By: jaime <jaime@student.42.fr>                +#+  +:+       +#+         #
 #                                                 +#+#+#+#+#+   +#+            #
 #    Created: 2026/03/20 15:49:56 by miparis           #+#    #+#              #
-#    Updated: 2026/03/31 17:10:02 by jaime            ###   ########.fr        #
+#    Updated: 2026/05/28 13:05:00 by jaime            ###   ########.fr        #
 #                                                                              #
 # **************************************************************************** #
 
@@ -16,13 +16,8 @@ NAME = Webserv
 SRCS =  src/main.cpp \
 		src/server/Server.cpp \
 		src/server/Client.cpp \
-#		src/http/Router.cpp \
-#		src/http/HttpRequest.cpp \
-#		src/http/HttpResponse.cpp \
-#		src/cgi/CgiHandler.cpp \
-#		src/config/Config.cpp \
-#		src/config/ConfigParser.cpp \
-#		src/utils/Utils.cpp
+		src/config/Config.cpp \
+		src/config/ConfigParser.cpp
 
 # Define Colors
 GREEN  := \033[1;32m  # Bold Green
