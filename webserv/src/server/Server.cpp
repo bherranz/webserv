@@ -6,7 +6,7 @@
 /*   By: miparis <miparis@student.42madrid.com>     +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/03/20 15:54:10 by miparis           #+#    #+#             */
-/*   Updated: 2026/05/28 15:36:14 by miparis          ###   ########.fr       */
+/*   Updated: 2026/06/04 17:41:15 by miparis          ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -27,6 +27,7 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 
+/*							QUITAAAAAAAAAR				*/
 namespace {
 	bool shouldUsePassive(const std::string &host) {
 		return host.empty() || host == "0.0.0.0" || host == "::";
