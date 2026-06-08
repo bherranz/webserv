@@ -3,8 +3,6 @@
 
 # 1. Estructura general del proyecto
 
-Una estructura muy usada y limpia es:
-
 ```
 webserv/
 │
