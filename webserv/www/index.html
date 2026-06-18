@@ -2,214 +2,323 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>webserv — HTTP/1.1 Server</title>
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-         background: #f5f5f5; color: #333; padding: 30px; }
-  h1 { font-size: 2em; margin-bottom: 6px; }
-  .subtitle { color: #666; margin-bottom: 30px; }
-  h2 { font-size: 1.3em; margin: 25px 0 12px; border-bottom: 2px solid #ddd; padding-bottom: 5px; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 16px; }
-  .card { background: #fff; border-radius: 8px; padding: 18px; box-shadow: 0 1px 4px rgba(0,0,0,.1); }
-  .card h3 { margin-bottom: 8px; }
-  .card p, .card ul { font-size: .92em; color: #555; line-height: 1.5; }
-  .card ul { padding-left: 18px; }
-  a { color: #2563eb; text-decoration: none; }
-  a:hover { text-decoration: underline; }
-  code { background: #eef; padding: 1px 5px; border-radius: 3px; font-size: .9em; }
-  .tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: .78em;
-         font-weight: 600; margin-bottom: 8px; }
-  .tag-get { background: #dbeafe; color: #1e40af; }
-  .tag-post { background: #dcfce7; color: #166534; }
-  .tag-delete { background: #fee2e2; color: #991b1b; }
-  .tag-all { background: #f3e8ff; color: #6b21a8; }
-  .btn { display: inline-block; padding: 5px 14px; border-radius: 5px; font-size: .85em;
-         font-weight: 600; border: none; cursor: pointer; margin: 4px 2px; }
-  .btn:hover { opacity: .85; }
-  .btn-get { background: #dbeafe; color: #1e40af; }
-  .btn-post { background: #dcfce7; color: #166534; }
-  .btn-delete { background: #fee2e2; color: #991b1b; }
-  .info { background: #f0f9ff; border-left: 3px solid #2563eb; padding: 10px 14px;
-          border-radius: 4px; margin-top: 10px; font-size: .88em; color: #444; }
-  .badge { display: inline-block; background: #2563eb; color: #fff; padding: 1px 7px;
-           border-radius: 10px; font-size: .72em; margin-left: 5px; }
-  input[type=text], input[type=file] { padding: 5px 8px; border: 1px solid #ccc;
-    border-radius: 4px; font-size: .85em; }
-  form { margin-top: 8px; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+       background: #f5f5f5; color: #333; }
+h1 { font-size: 1.8em; }
+.subtitle { color: #666; margin-top: 4px; font-size: .92em; }
+.header { background: #fff; border-bottom: 1px solid #ddd; padding: 16px 30px; }
+nav { background: #fff; border-bottom: 1px solid #ddd; padding: 0 30px; display: flex; gap: 0; }
+nav a { padding: 10px 18px; text-decoration: none; color: #555; font-size: .9em; font-weight: 500;
+        border-bottom: 2px solid transparent; transition: all .15s; }
+nav a:hover { color: #2563eb; background: #f8faff; }
+nav a.active { color: #2563eb; border-bottom-color: #2563eb; }
+.page { display: none; padding: 24px 30px; max-width: 900px; }
+.page.active { display: block; }
+h2 { font-size: 1.3em; margin: 20px 0 12px; }
+h3 { font-size: 1.05em; margin: 14px 0 6px; color: #444; }
+p, li { font-size: .92em; line-height: 1.6; color: #555; }
+ul { padding-left: 20px; margin: 6px 0; }
+code { background: #eef; padding: 1px 5px; border-radius: 3px; font-size: .9em; }
+pre { background: #1e293b; color: #e2e8f0; padding: 14px; border-radius: 6px; 
+      font-size: .82em; overflow-x: auto; line-height: 1.5; }
+.card { background: #fff; border-radius: 8px; padding: 16px; margin: 10px 0; 
+        box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 14px; }
+.tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: .76em;
+       font-weight: 600; margin-bottom: 6px; }
+.tag-get { background: #dbeafe; color: #1e40af; }
+.tag-post { background: #dcfce7; color: #166534; }
+.tag-delete { background: #fee2e2; color: #991b1b; }
+.tag-all { background: #f3e8ff; color: #6b21a8; }
+.info { background: #f0f9ff; border-left: 3px solid #2563eb; padding: 10px 14px;
+        border-radius: 4px; margin: 10px 0; font-size: .88em; color: #444; }
+.btn { display: inline-block; padding: 5px 14px; border-radius: 5px; font-size: .85em;
+       font-weight: 600; border: none; cursor: pointer; margin: 3px 2px; text-decoration: none; }
+.btn:hover { opacity: .85; }
+.btn-get { background: #dbeafe; color: #1e40af; }
+.btn-post { background: #dcfce7; color: #166534; }
+.btn-delete { background: #fee2e2; color: #991b1b; }
+.btn-upload { background: #2563eb; color: #fff; padding: 7px 18px; }
+input[type=text] { padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: .85em; }
+input[type=file] { padding: 6px 0; font-size: .85em; }
+.status { margin: 10px 0; padding: 8px 12px; border-radius: 4px; font-size: .88em; display: none; }
+.status.ok { display: block; background: #dcfce7; color: #166534; }
+.status.err { display: block; background: #fee2e2; color: #991b1b; }
+footer { text-align: center; color: #888; font-size: .82em; padding: 20px 0; }
 </style>
 </head>
 <body>
 
-<h1>webserv</h1>
-<p class="subtitle">HTTP/1.1 server · 42 Madrid · C++98 · poll() · non-blocking</p>
-
-<div class="info">
-  <strong>Server:</strong> webserv/1.0 &nbsp;|&nbsp;
-  <strong>Config:</strong> <code>web.config</code> &nbsp;|&nbsp;
-  <strong>Port:</strong> <code>8080</code> &nbsp;|&nbsp;
-  <strong>Keep-alive:</strong> 10s timeout
+<div class="header">
+  <h1>webserv</h1>
+  <div class="subtitle">HTTP/1.1 server &middot; 42 Madrid &middot; C++98 &middot; poll() &middot; non-blocking</div>
 </div>
 
-<!-- ─── METHODS ─── -->
-<h2>Methods</h2>
-<div class="grid">
+<nav id="nav">
+  <a href="#home" class="active" onclick="showPage('home')">Home</a>
+  <a href="#methods" onclick="showPage('methods')">Methods</a>
+  <a href="#upload" onclick="showPage('upload')">Upload</a>
+  <a href="#cgi" onclick="showPage('cgi')">CGI</a>
+  <a href="#features" onclick="showPage('features')">Features</a>
+  <a href="#test" onclick="showPage('test')">Test</a>
+</nav>
 
-<div class="card">
-  <span class="tag tag-get">GET</span>
-  <h3>Static files</h3>
-  <p>Serve files from <code>./www/</code> with automatic MIME types.</p>
-  <a class="btn btn-get" href="/index.html">/index.html</a>
-  <a class="btn btn-get" href="/">/ (index.html)</a>
-  <a class="btn btn-get" href="/nonexistent">/nonexistent → 404</a>
+<script>
+function showPage(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('nav a').forEach(a => a.classList.remove('active'));
+  document.getElementById('page-' + id).classList.add('active');
+  document.querySelector('nav a[href="#' + id + '"]').classList.add('active');
+}
+function uploadFile() {
+  var file = document.getElementById('fileInput').files[0];
+  if (!file) { showStatus('uploadStatus', 'Select a file first', false); return; }
+  var form = new FormData();
+  form.append('file', file);
+  fetch('/uploads/' + file.name, { method: 'POST', body: form })
+    .then(r => r.status == 201 ? showStatus('uploadStatus', 'Uploaded: ' + file.name + ' (' + file.size + ' bytes)', true)
+      : showStatus('uploadStatus', 'Upload failed: HTTP ' + r.status, false))
+    .catch(e => showStatus('uploadStatus', 'Error: ' + e.message, false));
+}
+function showStatus(id, msg, ok) {
+  var el = document.getElementById(id);
+  el.textContent = msg; el.className = 'status ' + (ok ? 'ok' : 'err'); el.style.display = 'block';
+}
+</script>
+
+<!-- ─── PAGE: HOME ─── -->
+<div id="page-home" class="page active">
+  <h2>Overview</h2>
+  <div class="info">
+    <strong>Server:</strong> webserv/1.0 &nbsp;|&nbsp;
+    <strong>Config:</strong> <code>web.config</code> &nbsp;|&nbsp;
+    <strong>Port:</strong> <code>8080</code> &nbsp;|&nbsp;
+    <strong>Keep-alive:</strong> 10s timeout &nbsp;|&nbsp;
+    <strong>Client timeout:</strong> 60s
+  </div>
+  <p>webserv is an HTTP/1.1 server written in C++98. It serves static files,
+  executes CGI scripts, handles file uploads, and more &mdash; all driven by a
+  single <code>poll()</code> event loop.</p>
+  <p>Navigate using the tabs above to explore each feature.</p>
 </div>
 
-<div class="card">
-  <span class="tag tag-post">POST</span>
-  <h3>File upload</h3>
-  <p>Upload a file to the server. The request body becomes the file content.</p>
-  <input type="text" id="uploadContent" value="hello from webserv" size="22">
-  <button class="btn btn-post" onclick="fetch('/uploads/demo.txt',{method:'POST',
-    body:document.getElementById('uploadContent').value}).then(r=>r.status==201
-      ?alert('Created /uploads/demo.txt') :alert('POST returned '+r.status))">Upload</button>
-  <br><small>Uploads to <code>/uploads/demo.txt</code>.
-  <a href="#" onclick="fetch('/uploads/demo.txt').then(r=>r.text()).then(t=>
-    fetch('/cgi-bin/demo.txt',{method:'POST',body:t})).then(r=>r.status==201
-      ?alert('Copied to /cgi-bin/demo.txt') :alert('Copy failed: '+r.status));
-    return false">Copy to /cgi-bin/</a> for DELETE.</small>
+<!-- ─── PAGE: METHODS ─── -->
+<div id="page-methods" class="page">
+  <h2>HTTP Methods</h2>
+  <div class="grid">
+    <div class="card">
+      <span class="tag tag-get">GET</span>
+      <h3>Static files</h3>
+      <p>Files from <code>./www/</code> served with automatic MIME types.</p>
+      <a class="btn btn-get" href="/index.html">/index.html</a>
+      <a class="btn btn-get" href="/">/ (index.html)</a>
+      <a class="btn btn-get" href="/nonexistent">/nonexistent &rarr; 404</a>
+    </div>
+    <div class="card">
+      <span class="tag tag-post">POST</span>
+      <h3>Upload via body</h3>
+      <p>Send raw text as the request body to create a file.</p>
+      <input type="text" id="postContent" value="hello from webserv" size="22">
+      <button class="btn btn-post" onclick="fetch('/uploads/demo.txt',{method:'POST',
+        body:document.getElementById('postContent').value})
+        .then(r=>r.status==201?alert('Created /uploads/demo.txt')
+          :alert('POST returned '+r.status))">Upload text</button>
+      <br><small>See <b>Upload</b> tab for file picker upload.</small>
+    </div>
+    <div class="card">
+      <span class="tag tag-delete">DELETE</span>
+      <h3>File removal</h3>
+      <p>Delete files via <code>DELETE</code>. Allowed in <code>/uploads</code> and <code>/cgi-bin</code>.</p>
+      <button class="btn btn-delete" onclick="fetch('/uploads/demo.txt',{method:'DELETE'})
+        .then(r=>r.status==204?alert('Deleted /uploads/demo.txt')
+          :alert('DELETE returned '+r.status))">Delete demo.txt</button>
+      <button class="btn btn-delete" onclick="fetch('/cgi-bin/demo.txt',{method:'DELETE'})
+        .then(r=>r.status==204?alert('Deleted /cgi-bin/demo.txt')
+          :alert('DELETE returned '+r.status))">Delete cgi-bin/demo.txt</button>
+    </div>
+  </div>
 </div>
 
-<div class="card">
-  <span class="tag tag-delete">DELETE</span>
-  <h3>File removal</h3>
-  <p>Remove files via <code>DELETE</code> method. Only allowed in <code>/cgi-bin/</code>.</p>
-  <button class="btn btn-delete" onclick="fetch('/cgi-bin/demo.txt',{method:'DELETE'})
-    .then(r=>r.status==204?alert('Deleted /cgi-bin/demo.txt')
-      :alert('DELETE returned '+r.status))">
-    Delete /cgi-bin/demo.txt
-  </button>
-  <br><small>Use <b>Copy to /cgi-bin/</b> above first, then delete.</small>
+<!-- ─── PAGE: UPLOAD ─── -->
+<div id="page-upload" class="page">
+  <h2>File Upload</h2>
+  <p>Select a file from your computer and upload it to the server.
+  The server supports both raw body uploads and <code>multipart/form-data</code>
+  (standard HTML file picker).</p>
+  <div class="card">
+    <h3>Upload a file</h3>
+    <input type="file" id="fileInput">
+    <button class="btn btn-upload" onclick="uploadFile()">Upload</button>
+    <div id="uploadStatus" class="status"></div>
+    <p class="info" style="margin-top:10px">Files are stored in <code>./www/uploads/</code>.
+    You can view them via <a href="/uploads/">/uploads/ autoindex</a> and delete them
+    from the <b>Methods</b> tab.</p>
+  </div>
+  <div class="card">
+    <h3>Upload via curl</h3>
+    <pre>
+# Raw body
+curl -X POST -d "hello world" http://localhost:8080/uploads/test.txt
+
+# File upload (multipart)
+curl -F "file=@document.pdf" http://localhost:8080/uploads/document.pdf
+
+# Chunked
+printf "5\r\nHello\r\n0\r\n\r\n" | curl -X POST -H "Transfer-Encoding: chunked" \
+  --data-binary @- http://localhost:8080/uploads/chunked.txt</pre>
+  </div>
 </div>
 
+<!-- ─── PAGE: CGI ─── -->
+<div id="page-cgi" class="page">
+  <h2>CGI Scripts</h2>
+  <p>Python and Shell scripts executed via <code>fork()</code> + <code>execve()</code>
+  with full CGI/1.1 environment. 5-second timeout returns 504 Gateway Timeout.</p>
+  <div class="grid">
+    <div class="card">
+      <span class="tag tag-get">GET</span>
+      <h3>test.py</h3>
+      <p>Basic Python CGI showing method, query string, and headers.</p>
+      <a class="btn btn-get" href="/cgi-bin/test.py">Run</a>
+      <a class="btn btn-get" href="/cgi-bin/test.py?name=42">With query</a>
+    </div>
+    <div class="card">
+      <span class="tag tag-get">GET</span>
+      <h3>hello.sh</h3>
+      <p>Shell CGI script.</p>
+      <a class="btn btn-get" href="/cgi-bin/hello.sh">Run</a>
+    </div>
+    <div class="card">
+      <span class="tag tag-get">GET</span>
+      <h3>form.py</h3>
+      <p>CGI that reads QUERY_STRING and displays it.</p>
+      <a class="btn btn-get" href="/cgi-bin/form.py?name=webserv">Run</a>
+    </div>
+    <div class="card">
+      <span class="tag tag-post">POST</span>
+      <h3>POST to CGI</h3>
+      <p>CGI scripts receive POST body on stdin.</p>
+      <button class="btn btn-post" onclick="fetch('/cgi-bin/test.py',{method:'POST',
+        body:'hello from POST'}).then(r=>r.text()).then(t=>alert(t.substring(0,200)))">
+        POST to test.py
+      </button>
+    </div>
+    <div class="card">
+      <span class="tag tag-all">Error</span>
+      <h3>Error scripts</h3>
+      <p><code>error.py</code> exits with code 1 &rarr; 500.
+      <code>timeout.py</code> sleeps 10s &rarr; 504.</p>
+      <a class="btn btn-get" href="/cgi-bin/error.py">500 Internal</a>
+      <a class="btn btn-get" href="/cgi-bin/timeout.py">504 Gateway Timeout</a>
+    </div>
+  </div>
 </div>
 
-<!-- ─── FEATURES ─── -->
-<h2>Features</h2>
-<div class="grid">
-
-<div class="card">
-  <span class="tag tag-get">GET</span>
-  <h3>Autoindex</h3>
-  <p>Directory listing when no index file is present.</p>
-  <a class="btn btn-get" href="/uploads/">/uploads/</a>
-  <a class="btn btn-get" href="/files/">/files/</a>
+<!-- ─── PAGE: FEATURES ─── -->
+<div id="page-features" class="page">
+  <h2>Server Features</h2>
+  <div class="grid">
+    <div class="card">
+      <h3>Autoindex</h3>
+      <p>Directory listing when no index file is present.</p>
+      <a class="btn btn-get" href="/uploads/">/uploads/</a>
+      <a class="btn btn-get" href="/files/">/files/</a>
+    </div>
+    <div class="card">
+      <h3>Redirects</h3>
+      <p>301 Moved Permanently via <code>return</code> directive.</p>
+      <a class="btn btn-get" href="/old_path">/old_path &rarr; /uploads</a>
+    </div>
+    <div class="card">
+      <h3>Error pages</h3>
+      <p>Built-in and custom error pages (<code>error_page</code> directive).</p>
+      <a class="btn btn-get" href="/nonexistent">404</a>
+      <a class="btn btn-get" href="/cgi-bin/error.py">500</a>
+      <a class="btn btn-get" href="/cgi-bin/timeout.py">504</a>
+      <button class="btn btn-get" onclick="fetch('/',{method:'DELETE'})
+        .then(r=>r.status===405?alert('405 OK'):alert('Got '+r.status))">405</button>
+      <button class="btn btn-get" onclick="fetch('/',{method:'POST',
+        body:'x'.repeat(20000)}).then(r=>alert('413 body='+r.status))">413</button>
+    </div>
+    <div class="card">
+      <h3>Keep-alive</h3>
+      <p>Reuse TCP connections for multiple requests (configurable timeout).</p>
+      <p class="info" style="margin-top:6px">Try: <code>curl -H "Connection: keep-alive"
+        http://localhost:8080/ http://localhost:8080/index.html</code></p>
+    </div>
+    <div class="card">
+      <h3>Virtual hosts</h3>
+      <p>Route by <code>Host</code> header &mdash; server blocks matched by <code>server_name</code>.</p>
+      <p class="info" style="margin-top:6px">Try: <code>curl -H "Host: example.com"
+        http://localhost:8080/</code> (server 2 on port 8082)</p>
+    </div>
+    <div class="card">
+      <h3>Timeouts</h3>
+      <p>Configurable per-server <code>client_timeout</code> (default 60s)
+      and <code>keepalive_timeout</code> (default 10s). 408 returned on timeout.</p>
+    </div>
+    <div class="card">
+      <h3>Chunked encoding</h3>
+      <p>Server accepts <code>Transfer-Encoding: chunked</code> and
+      un-chunks body before passing to CGI or saving to disk.</p>
+    </div>
+    <div class="card">
+      <h3>Request limits</h3>
+      <p><code>client_max_body_size</code> limits request body size (default 10 KB).</p>
+      <button class="btn btn-post" onclick="fetch('/',{method:'POST',
+        body:'x'.repeat(20000)}).then(r=>alert('20000 bytes &gt; 10000 limit\nHTTP '+r.status))">
+        Test 413 (20 KB)
+      </button>
+    </div>
+  </div>
 </div>
 
-<div class="card">
-  <span class="tag tag-get">GET</span>
-  <h3>Redirects</h3>
-  <p>301 Moved Permanently via <code>return</code> directive.</p>
-  <a class="btn btn-get" href="/old_path">/old_path → /uploads</a>
-</div>
-
-<div class="card">
-  <span class="tag tag-all">CGI</span>
-  <h3>CGI scripts</h3>
-  <p>Python and Shell scripts executed via fork+execve.</p>
-  <a class="btn btn-get" href="/cgi-bin/test.py">test.py</a>
-  <a class="btn btn-get" href="/cgi-bin/hello.sh">hello.sh</a>
-  <a class="btn btn-get" href="/cgi-bin/form.py?name=42">form.py?name=42</a>
-  <a class="btn btn-get" href="/cgi-bin/timeout.py">timeout.py → 504</a>
-  <a class="btn btn-get" href="/cgi-bin/error.py">error.py → 500</a>
-</div>
-
-<div class="card">
-  <span class="tag tag-all">Error</span>
-  <h3>HTTP errors</h3>
-  <p>Built-in and custom error pages.</p>
-  <a class="btn btn-get" href="/nonexistent">404 Not Found</a>
-  <a class="btn btn-get" href="/" onclick="fetch(this.href,{method:'DELETE'}).then(r=>r.status===405?alert('405 OK'):alert('unexpected status '+r.status));return false">405 Method Not Allowed</a>
-  <a class="btn btn-get" href="/cgi-bin/error.py">500 Internal</a>
-  <a class="btn btn-get" href="/cgi-bin/timeout.py">504 Gateway Timeout</a>
-</div>
-
-<div class="card">
-  <span class="tag tag-all">Encoding</span>
-  <h3>Chunked transfer</h3>
-  <p>Server receives <code>Transfer-Encoding: chunked</code> requests.</p>
-  <a class="btn btn-post" href="/cgi-bin/chunk_test.txt">CHUNK POST to file</a>
-  <p class="info" style="margin-top:8px">Try: <code>curl -X POST --data-binary @file
-    http://localhost:8080/upload</code></p>
-</div>
-
-<div class="card">
-  <span class="tag tag-all">Connection</span>
-  <h3>Keep-alive</h3>
-  <p>Reuse TCP connections for multiple requests (10s idle timeout).</p>
-  <p class="info" style="margin-top:8px">Try: <code>curl -H "Connection: keep-alive"
-    http://localhost:8080/</code></p>
-</div>
-
-<div class="card">
-  <span class="tag tag-all">Virtual Hosts</span>
-  <h3>Virtual hosts</h3>
-  <p>Route by <code>Host</code> header — server blocks matched by <code>server_name</code>.</p>
-  <p class="info" style="margin-top:8px">Try: <code>curl -H "Host: example.com"
-    http://localhost:8080/</code></p>
-</div>
-
-<div class="card">
-  <span class="tag tag-all">Validation</span>
-  <h3>Request limits</h3>
-  <p>Configurable <code>client_max_body_size</code> (default 10 KB).</p>
-  <a class="btn btn-post" href="/" onclick="fetch('/',{method:'POST',
-    body:'x'.repeat(20000)}).then(r=>alert('413 body='+r.status));return false">
-    413 Content Too Large
-  </a>
-  <br><small>20000 bytes &gt; 10000 limit</small>
-</div>
-
-</div>
-
-<!-- ─── TEST COMMANDS ─── -->
-<h2>Quick test (terminal)</h2>
-<div class="card" style="max-width:100%">
-<pre style="background:#1e293b;color:#e2e8f0;padding:14px;border-radius:6px;font-size:.85em;overflow-x:auto;line-height:1.6">
+<!-- ─── PAGE: TEST ─── -->
+<div id="page-test" class="page">
+  <h2>Quick test (terminal)</h2>
+  <div class="card">
+    <pre>
 <span style="color:#94a3b8"># Serve static</span>
 curl http://localhost:8080/index.html
 
-<span style="color:#94a3b8"># POST upload</span>
-curl -X POST -d "hello world" http://localhost:8080/hello.txt
+<span style="color:#94a3b8"># POST upload (raw body)</span>
+curl -X POST -d "hello world" http://localhost:8080/uploads/test.txt
+
+<span style="color:#94a3b8"># POST upload (multipart file)</span>
+curl -F "file=@document.pdf" http://localhost:8080/uploads/document.pdf
 
 <span style="color:#94a3b8"># DELETE</span>
-curl -X DELETE http://localhost:8080/cgi-bin/hello.txt
+curl -X DELETE http://localhost:8080/uploads/test.txt
 
 <span style="color:#94a3b8"># CGI</span>
 curl http://localhost:8080/cgi-bin/test.py
 
-<span style="color:#94a3b8"># Keep-alive + multiple requests</span>
+<span style="color:#94a3b8"># Keep-alive</span>
 curl -H "Connection: keep-alive" http://localhost:8080/ http://localhost:8080/index.html
 
 <span style="color:#94a3b8"># Chunked POST</span>
 printf "5\r\nHello\r\n0\r\n\r\n" | curl -X POST -H "Transfer-Encoding: chunked" \
-  --data-binary @- http://localhost:8080/chunked.txt
+  --data-binary @- http://localhost:8080/uploads/chunked.txt
 
 <span style="color:#94a3b8"># Autoindex</span>
 curl http://localhost:8080/uploads/
 
 <span style="color:#94a3b8"># Custom error page (server 2)</span>
-curl -H "Host: example.com" http://localhost:8080/nonexistent
+curl -H "Host: example.com" http://localhost:8082/nonexistent
 
-<span style="color:#94a3b8"># 408 Request Timeout (open connection, send partial headers, wait)</span>
+<span style="color:#94a3b8"># 408 Request Timeout</span>
 python3 -c "
 import socket; s=socket.socket(); s.connect(('localhost',8080));
 s.send(b'GET / HTTP/1.1\r\nHost: localhost\r\n'); import time; time.sleep(65);
-s.send(b'\r\n'); print(s.recv(1024).decode(errors='replace').split('\r\n')[0])"
-</pre>
+s.send(b'\r\n'); print(s.recv(1024).decode(errors='replace').split('\r\n')[0])"</pre>
+  </div>
 </div>
 
-<hr style="margin:30px 0;border:none;border-top:1px solid #ddd">
-<footer style="text-align:center;color:#888;font-size:.85em">
+<footer>
   webserv/1.0 &bull; 42 Madrid &bull;
   <a href="https://github.com/bherranz/webserv">github.com/bherranz/webserv</a>
 </footer>

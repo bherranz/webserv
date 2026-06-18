@@ -30,6 +30,13 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
+#include <csignal>
+
+static volatile std::sig_atomic_t g_stopRequested = 0;
+
+extern "C" void handleSigint(int) {
+	g_stopRequested = 1;
+}
 
 namespace {
 	bool shouldUsePassive(const std::string &host) {
@@ -430,7 +437,8 @@ void Server::checkTimeouts()
 
 void Server::run() {
 	static const int pollTimeoutMs = 1000;
-	while (true) {
+	std::signal(SIGINT, handleSigint);
+	while (!g_stopRequested) {
 		rebuildPollFds();
 		int ready = ::poll(&_pollFds[0], _pollFds.size(), pollTimeoutMs);
 		if (ready < 0) {
@@ -461,4 +469,5 @@ void Server::run() {
 		}
 		checkTimeouts();
 	}
+	std::cout << "Shutting down server..." << std::endl;
 }

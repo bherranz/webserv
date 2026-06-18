@@ -27,4 +27,7 @@ class Router
 	void handleAutoindex(const std::string &dirPath, HttpResponse &res);
 
 	void buildErrorResponse(HttpResponse &res, int code, const ServerConfig &server);
+
+	bool parseMultipart(const std::string &body, const std::string &boundary,
+		std::string &outFilename, std::string &outContent);
 };

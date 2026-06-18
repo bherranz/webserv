@@ -221,6 +221,64 @@ void Router::handleGet(const HttpRequest &req, HttpResponse &res, const Location
 
 void Router::handlePost(const HttpRequest &req, HttpResponse &res, const LocationConfig &loc, const ServerConfig &server)
 {
+	// Check for multipart/form-data upload
+	std::map<std::string, std::string>::const_iterator ct = req._headers.find("Content-Type");
+	if (ct != req._headers.end() && ct->second.find("multipart/form-data") != std::string::npos)
+	{
+		std::string boundary;
+		std::size_t bpos = ct->second.find("boundary=");
+		if (bpos != std::string::npos)
+			boundary = ct->second.substr(bpos + 9);
+
+		if (!boundary.empty())
+		{
+			std::string filename;
+			std::string content;
+			if (parseMultipart(req._body, boundary, filename, content))
+			{
+				if (!content.empty())
+				{
+					std::string root;
+					if (loc.hasUploadStore && !loc.uploadStore.empty())
+						root = loc.uploadStore;
+					else if (loc.hasRoot && !loc.root.empty())
+						root = loc.root;
+					else if (server.hasRoot && !server.root.empty())
+						root = server.root;
+					else
+						root = ".";
+
+					// Sanitize filename: remove path separators
+					std::string safeName = filename;
+					std::size_t sep = safeName.rfind('/');
+					if (sep != std::string::npos)
+						safeName = safeName.substr(sep + 1);
+					sep = safeName.rfind('\\');
+					if (sep != std::string::npos)
+						safeName = safeName.substr(sep + 1);
+
+					std::string fsPath;
+					if (!root.empty() && root[root.size() - 1] == '/')
+						fsPath = root + safeName;
+					else
+						fsPath = root + "/" + safeName;
+
+					std::ofstream file(fsPath.c_str(), std::ios::binary);
+					if (file.is_open())
+					{
+						file.write(content.c_str(), content.size());
+						file.close();
+						res.setStatus(201, "Created");
+						res.setBody("");
+						res.setContentLength(0);
+						return;
+					}
+				}
+			}
+		}
+		// Fall through to normal POST on parse failure
+	}
+
 	std::string root;
 	if (loc.hasUploadStore && !loc.uploadStore.empty())
 		root = loc.uploadStore;
@@ -414,4 +472,85 @@ void Router::buildErrorResponse(HttpResponse &res, int code, const ServerConfig 
 	res.setContentType("text/html");
 	res.setBody(body);
 	res.setContentLength(body.size());
+}
+
+bool Router::parseMultipart(const std::string &body, const std::string &boundary,
+	std::string &outFilename, std::string &outContent)
+{
+	std::string delimiter = "--" + boundary;
+
+	std::size_t pos = 0;
+	while (true)
+	{
+		std::size_t partStart = body.find(delimiter, pos);
+		if (partStart == std::string::npos)
+			break;
+
+		std::size_t headerStart = partStart + delimiter.size();
+
+		if (body.compare(headerStart, 2, "--") == 0)
+			break;
+
+		if (body.compare(headerStart, 2, "\r\n") == 0)
+			headerStart += 2;
+		else if (body[headerStart] == '\n')
+			headerStart += 1;
+
+		std::size_t headerEnd = body.find("\r\n\r\n", headerStart);
+		if (headerEnd == std::string::npos)
+		{
+			headerEnd = body.find("\n\n", headerStart);
+			if (headerEnd == std::string::npos)
+				break;
+			std::size_t contentEnd = body.find(delimiter, headerEnd + 2);
+			if (contentEnd == std::string::npos)
+				break;
+			std::string partHeaders = body.substr(headerStart, headerEnd - headerStart);
+			std::string content = body.substr(headerEnd + 2, contentEnd - headerEnd - 2);
+			if (!content.empty() && content[content.size() - 1] == '\n')
+				content.erase(content.size() - 1);
+			if (!content.empty() && content[content.size() - 1] == '\r')
+				content.erase(content.size() - 1);
+			if (partHeaders.find("filename=") != std::string::npos)
+			{
+				std::size_t fnStart = partHeaders.find("filename=") + 9;
+				if (fnStart < partHeaders.size() && (partHeaders[fnStart] == '"' || partHeaders[fnStart] == '\''))
+					fnStart += 1;
+				std::size_t fnEnd = partHeaders.find_first_of("\"'\r\n;", fnStart);
+				if (fnEnd == std::string::npos)
+					fnEnd = partHeaders.size();
+				outFilename = partHeaders.substr(fnStart, fnEnd - fnStart);
+				outContent = content;
+				return true;
+			}
+			break;
+		}
+
+		std::string partHeaders = body.substr(headerStart, headerEnd - headerStart);
+		std::size_t contentStart = headerEnd + 4;
+		std::size_t contentEnd = body.find(delimiter, contentStart);
+		if (contentEnd == std::string::npos)
+			break;
+		std::string content = body.substr(contentStart, contentEnd - contentStart);
+		if (!content.empty() && content[content.size() - 1] == '\n')
+			content.erase(content.size() - 1);
+		if (!content.empty() && content[content.size() - 1] == '\r')
+			content.erase(content.size() - 1);
+
+		if (partHeaders.find("filename=") != std::string::npos)
+		{
+			std::size_t fnStart = partHeaders.find("filename=") + 9;
+			if (fnStart < partHeaders.size() && (partHeaders[fnStart] == '"' || partHeaders[fnStart] == '\''))
+				fnStart += 1;
+			std::size_t fnEnd = partHeaders.find_first_of("\"'\r\n;", fnStart);
+			if (fnEnd == std::string::npos)
+				fnEnd = partHeaders.size();
+			outFilename = partHeaders.substr(fnStart, fnEnd - fnStart);
+			outContent = content;
+			return true;
+		}
+
+		pos = contentEnd;
+	}
+	return false;
 }
