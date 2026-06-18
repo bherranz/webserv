@@ -372,16 +372,4 @@ Config ConfigParser::parseFile(const std::string &path) {
 
 	Parser parser(tokens);
 	return parser.parse();
-}/* ************************************************************************** */
-/*                                                                            */
-/*                                                        :::      ::::::::   */
-/*   ConfigParser.cpp                                   :+:      :+:    :+:   */
-/*                                                    +:+ +:+         +:+     */
-/*   By: miparis <miparis@student.42madrid.com>     +#+  +:+       +#+        */
-/*                                                +#+#+#+#+#+   +#+           */
-/*   Created: 2026/03/20 15:55:25 by miparis           #+#    #+#             */
-/*   Updated: 2026/03/20 15:55:37 by miparis          ###   ########.fr       */
-/*                                                                            */
-/* ************************************************************************** */
-
-#include "ConfigParser.hpp"
+}

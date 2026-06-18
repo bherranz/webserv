@@ -8,6 +8,7 @@
 
 #include "Config.hpp"
 #include "Client.hpp"
+#include "HttpRequest.hpp"
 
 class Server {
 public:
@@ -15,6 +16,10 @@ public:
 	~Server();
 
 	void run();
+
+	static const int CLIENT_TIMEOUT = 60;
+	static const int KEEPALIVE_TIMEOUT = 10;
+	static const int POLL_TIMEOUT_MS = 1000;
 
 private:
 	Server(const Server &);
@@ -31,11 +36,16 @@ private:
 	void closeClient(int fd);
 	bool isListenFd(int fd) const;
 
+	void checkTimeouts();
+	bool shouldKeepAlive(const HttpRequest &req) const;
+
 	Config _config;
 	std::vector<int> _listenFds;
 	std::map<int, std::size_t> _listenOwners;
 	std::vector<struct pollfd> _pollFds;
 	std::map<int, Client> _clients;
+	std::map<int, std::size_t> _clientServers;
+	std::map<int, HttpRequest> _pendingRequests;
 };
 
 #endif

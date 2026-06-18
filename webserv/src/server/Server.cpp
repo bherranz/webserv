@@ -12,10 +12,14 @@
 
 #include "Server.hpp"
 #include "HttpRequest.hpp"
+#include "HttpResponse.hpp"
+#include "Router.hpp"
+#include "Utils.hpp"
 
 #include <iostream>
 #include <cstring>
 #include <cerrno>
+#include <cctype>
 #include <sstream>
 #include <map>
 
@@ -27,7 +31,6 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 
-/*							QUITAAAAAAAAAR				*/
 namespace {
 	bool shouldUsePassive(const std::string &host) {
 		return host.empty() || host == "0.0.0.0" || host == "::";
@@ -175,14 +178,18 @@ void Server::acceptClients(int listenFd) {
 			continue;
 		}
 		_clients.insert(std::make_pair(clientFd, Client(clientFd)));
+		std::map<int, std::size_t>::iterator owner = _listenOwners.find(listenFd);
+		if (owner != _listenOwners.end())
+			_clientServers[clientFd] = owner->second;
 	}
 }
 
 void Server::handleClientRead(int fd)
 {
 	std::map<int, Client>::iterator it = _clients.find(fd);
-	if (it == _clients.end())
+	if (it == _clients.end()) {
 		return;
+	}
 
 	char buf[4096];
 	while (true)
@@ -190,48 +197,131 @@ void Server::handleClientRead(int fd)
 		ssize_t n = ::recv(fd, buf, sizeof(buf), 0);
 		if (n > 0)
 		{
+			it->second.updateActivity();
 			it->second.inBuffer().append(buf, n);
-			if (it->second.inBuffer().find("\r\n\r\n") != std::string::npos)
+
+			HttpRequest &req = _pendingRequests[fd];
+			bool headersJustCompleted = false;
+
+			if (!req.headersComplete())
 			{
-				HttpRequest request;
-				std::cout << "RAW REQUEST:" << std::endl;
-				std::cout << it->second.inBuffer() << std::endl;
-				if (request.parse(it->second.inBuffer()))
+				std::size_t headerEnd = it->second.inBuffer().find("\r\n\r\n");
+				if (headerEnd != std::string::npos)
 				{
-					std::cout << "METHOD: "
-							<< request._method
-							<< std::endl;
+					if (!req.parse(it->second.inBuffer()))
+					{
+						HttpResponse response;
+						response.setStatus(400, "Bad Request");
+						response.setContentType("text/html");
+						std::string body = "<html><body><h1>400 Bad Request</h1></body></html>";
+						response.setBody(body);
+						response.setContentLength(body.size());
+						it->second.outBuffer() = response.toString();
+						it->second.inBuffer().clear();
+						_pendingRequests.erase(fd);
+						return;
+					}
 
-					std::cout << "PATH: "
-							<< request._path
-							<< std::endl;
-
-					std::cout << "VERSION: "
-							<< request._version
-							<< std::endl;
+					std::size_t bodyStart = headerEnd + 4;
+					if (bodyStart < it->second.inBuffer().size())
+					{
+						std::string bodyData = it->second.inBuffer().substr(bodyStart);
+						req.appendBodyData(bodyData);
+					}
+					it->second.inBuffer().clear();
+					headersJustCompleted = true;
 				}
-				request.printRequest();
-				if (it->second.outBuffer().empty())
+				else
 				{
-					it->second.outBuffer() =
-						"HTTP/1.1 200 OK\r\n"
-						"Content-Length: 2\r\n"
-						"\r\n"
-						"OK";
+					if (it->second.isTimedOut(CLIENT_TIMEOUT))
+					{
+						HttpResponse response;
+						response.setStatus(408, "Request Timeout");
+						std::string body = "<html><body><h1>408 Request Timeout</h1></body></html>";
+						response.setBody(body);
+						response.setContentType("text/html");
+						response.setContentLength(body.size());
+						it->second.outBuffer() = response.toString();
+						_pendingRequests.erase(fd);
+						return;
+					}
+					return;
 				}
-
-				it->second.inBuffer().clear();
 			}
+
+			if (req.headersComplete() && !req.bodyComplete())
+			{
+				if (!headersJustCompleted)
+				{
+					req.appendBodyData(std::string(buf, n));
+					it->second.inBuffer().clear();
+				}
+			}
+
+			if (req.bodyComplete())
+			{
+				HttpResponse response;
+
+				std::size_t serverIdx = 0;
+				std::map<int, std::size_t>::iterator si = _clientServers.find(fd);
+				if (si != _clientServers.end())
+					serverIdx = si->second;
+
+				std::map<std::string, std::string>::const_iterator hostIt = req._headers.find("Host");
+				if (hostIt != req._headers.end())
+				{
+					std::string hostHeader = hostIt->second;
+					std::size_t colonPos = hostHeader.find(':');
+					if (colonPos != std::string::npos)
+						hostHeader = hostHeader.substr(0, colonPos);
+
+					bool found = false;
+					for (std::size_t i = 0; i < _config.servers().size() && !found; ++i)
+					{
+						for (std::size_t j = 0; j < _config.servers()[i].serverNames.size() && !found; ++j)
+						{
+							if (_config.servers()[i].serverNames[j] == hostHeader)
+							{
+								serverIdx = i;
+								found = true;
+							}
+						}
+					}
+				}
+
+				Router router;
+				router.route(req, response, _config.servers()[serverIdx]);
+
+				response.setHeader("Server", "webserv/1.0");
+				response.setHeader("Date", Utils::formatDate());
+
+				bool keepAlive = shouldKeepAlive(req);
+				it->second.setKeepAlive(keepAlive);
+				if (keepAlive)
+					response.setHeader("Connection", "keep-alive");
+				else
+					response.setHeader("Connection", "close");
+				_pendingRequests.erase(fd);
+
+				it->second.outBuffer() = response.toString();
+				return;
+			}
+			return;
 		}
 		if (n == 0)
 		{
+			_pendingRequests.erase(fd);
 			closeClient(fd);
 			return;
 		}
-		if (errno == EAGAIN || errno == EWOULDBLOCK)
+		if (n < 0)
+		{
+			if (errno == EAGAIN || errno == EWOULDBLOCK)
+				return;
+			_pendingRequests.erase(fd);
+			closeClient(fd);
 			return;
-		closeClient(fd);
-		return;
+		}
 	}
 }
 
@@ -245,6 +335,7 @@ void Server::handleClientWrite(int fd) {
 		ssize_t n = ::send(fd, out.c_str(), out.size(), 0);
 		if (n > 0) {
 			out.erase(0, n);
+			it->second.updateActivity();
 			continue;
 		}
 		if (errno == EAGAIN || errno == EWOULDBLOCK)
@@ -252,7 +343,16 @@ void Server::handleClientWrite(int fd) {
 		closeClient(fd);
 		return;
 	}
-	closeClient(fd);
+
+	if (it->second.keepAlive())
+	{
+		it->second.clearBuffers();
+		it->second.updateActivity();
+	}
+	else
+	{
+		closeClient(fd);
+	}
 }
 
 void Server::closeClient(int fd) {
@@ -261,16 +361,65 @@ void Server::closeClient(int fd) {
 		return;
 	it->second.closeFd();
 	_clients.erase(it);
+	_pendingRequests.erase(fd);
+	_clientServers.erase(fd);
 }
 
 bool Server::isListenFd(int fd) const {
 	return _listenOwners.find(fd) != _listenOwners.end();
 }
 
+bool Server::shouldKeepAlive(const HttpRequest &req) const
+{
+	std::map<std::string, std::string>::const_iterator it = req._headers.find("Connection");
+	if (it != req._headers.end())
+	{
+		std::string val = it->second;
+		for (std::size_t i = 0; i < val.size(); ++i)
+			val[i] = static_cast<char>(std::tolower(static_cast<unsigned char>(val[i])));
+		if (val.find("keep-alive") != std::string::npos)
+			return true;
+	}
+	return false;
+}
+
+void Server::checkTimeouts()
+{
+	std::map<int, Client>::iterator it = _clients.begin();
+	while (it != _clients.end())
+	{
+		int fd = it->first;
+		time_t timeout = it->second.keepAlive() ? KEEPALIVE_TIMEOUT : CLIENT_TIMEOUT;
+
+		if (it->second.isTimedOut(timeout))
+		{
+			if (it->second.outBuffer().empty() && _pendingRequests.find(fd) != _pendingRequests.end())
+			{
+				HttpResponse response;
+				response.setStatus(408, "Request Timeout");
+				std::string body = "<html><body><h1>408 Request Timeout</h1></body></html>";
+				response.setBody(body);
+				response.setContentType("text/html");
+				response.setContentLength(body.size());
+				it->second.outBuffer() = response.toString();
+				_pendingRequests.erase(fd);
+			}
+			it->second.closeFd();
+			_clientServers.erase(fd);
+			_pendingRequests.erase(fd);
+			_clients.erase(it++);
+		}
+		else
+		{
+			++it;
+		}
+	}
+}
+
 void Server::run() {
 	while (true) {
 		rebuildPollFds();
-		int ready = ::poll(&_pollFds[0], _pollFds.size(), -1);
+		int ready = ::poll(&_pollFds[0], _pollFds.size(), POLL_TIMEOUT_MS);
 		if (ready < 0) {
 			if (errno == EINTR)
 				continue;
@@ -297,5 +446,6 @@ void Server::run() {
 			if (p.revents & POLLOUT)
 				handleClientWrite(p.fd);
 		}
+		checkTimeouts();
 	}
 }

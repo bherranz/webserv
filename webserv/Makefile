@@ -18,7 +18,11 @@ SRCS =  src/main.cpp \
 		src/server/Client.cpp \
 		src/config/Config.cpp \
 		src/config/ConfigParser.cpp \
-		src/http/HttpRequest.cpp
+		src/http/HttpRequest.cpp \
+		src/http/HttpResponse.cpp \
+		src/http/Router.cpp \
+		src/cgi/CgiHandler.cpp \
+		src/utils/Utils.cpp
 
 # Define Colors
 GREEN  := \033[1;32m  # Bold Green

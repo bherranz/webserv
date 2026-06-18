@@ -1,15 +1,3 @@
-/* ************************************************************************** */
-/*                                                                            */
-/*                                                        :::      ::::::::   */
-/*   HttpRequest.hpp                                    :+:      :+:    :+:   */
-/*                                                    +:+ +:+         +:+     */
-/*   By: miparis <miparis@student.42madrid.com>     +#+  +:+       +#+        */
-/*                                                +#+#+#+#+#+   +#+           */
-/*   Created: 2026/05/28 13:17:56 by miparis           #+#    #+#             */
-/*   Updated: 2026/05/28 15:36:46 by miparis          ###   ########.fr       */
-/*                                                                            */
-/* ************************************************************************** */
-
 #pragma once
 
 #include <map>
@@ -20,17 +8,26 @@
 class HttpRequest
 {
 	public:
-	//basic data of a request line 1º line
 	std::string _method;
 	std::string _path;
 	std::string _version;
 
-	std::map<std::string, std::string> _headers;// We have key and value for each one
+	std::map<std::string, std::string> _headers;
 	std::string _body;
+
+	HttpRequest();
 	bool parse(const std::string &raw);
 	void printRequest() const;
+	bool headersComplete() const;
+	bool bodyComplete();
+	void appendBodyData(const std::string &data);
 
 	private:
 	void parseRequestLine(const std::string &line);
 	void parseHeaderLine(const std::string &line);
+	bool parseChunkedBody();
+
+	bool _headersDone;
+	std::size_t _contentLength;
+	bool _chunked;
 };
