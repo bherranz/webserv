@@ -17,10 +17,6 @@ public:
 
 	void run();
 
-	static const int CLIENT_TIMEOUT = 60;
-	static const int KEEPALIVE_TIMEOUT = 10;
-	static const int POLL_TIMEOUT_MS = 1000;
-
 private:
 	Server(const Server &);
 	Server &operator=(const Server &);
@@ -38,6 +34,7 @@ private:
 
 	void checkTimeouts();
 	bool shouldKeepAlive(const HttpRequest &req) const;
+	const ServerConfig &getServerForClient(int fd) const;
 
 	Config _config;
 	std::vector<int> _listenFds;

@@ -18,6 +18,7 @@ struct LocationConfig
 {
 	std::string				path;
 	std::string				root;
+	std::string				uploadStore;
 	std::vector<std::string>	index;
 	bool					autoindex;
 	std::vector<std::string>	allowMethods;
@@ -28,6 +29,7 @@ struct LocationConfig
 	std::vector<std::string>	cgiExt;
 
 	bool	hasRoot;
+	bool	hasUploadStore;
 	bool	hasIndex;
 	bool	hasAllowMethods;
 	bool	hasRedirect;
@@ -48,10 +50,15 @@ struct ServerConfig
 	std::size_t						clientMaxBodySize;
 	std::vector<LocationConfig>		locations;
 
+	int		clientTimeout;
+	int		keepaliveTimeout;
+
 	bool	hasHost;
 	bool	hasRoot;
 	bool	hasIndex;
 	bool	hasClientMaxBodySize;
+	bool	hasClientTimeout;
+	bool	hasKeepaliveTimeout;
 
 	ServerConfig();
 };

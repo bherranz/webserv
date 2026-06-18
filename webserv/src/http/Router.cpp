@@ -221,7 +221,35 @@ void Router::handleGet(const HttpRequest &req, HttpResponse &res, const Location
 
 void Router::handlePost(const HttpRequest &req, HttpResponse &res, const LocationConfig &loc, const ServerConfig &server)
 {
-	std::string fsPath = resolvePath(req._path, loc, server);
+	std::string root;
+	if (loc.hasUploadStore && !loc.uploadStore.empty())
+		root = loc.uploadStore;
+	else if (loc.hasRoot && !loc.root.empty())
+		root = loc.root;
+	else if (server.hasRoot && !server.root.empty())
+		root = server.root;
+	else
+		root = ".";
+
+	std::string cleanPath = Utils::stripQueryString(req._path);
+	cleanPath = Utils::urlDecode(cleanPath);
+
+	// Strip the location prefix from the URI so uploaded files land in upload_store
+	// without duplicating the location path segment.
+	if (loc.hasUploadStore && !loc.uploadStore.empty() && !loc.path.empty())
+	{
+		if (cleanPath.compare(0, loc.path.size(), loc.path) == 0)
+			cleanPath = cleanPath.substr(loc.path.size());
+	}
+
+	if (!cleanPath.empty() && cleanPath[0] == '/')
+		cleanPath = cleanPath.substr(1);
+
+	std::string fsPath;
+	if (!root.empty() && root[root.size() - 1] == '/')
+		fsPath = root + cleanPath;
+	else
+		fsPath = root + "/" + cleanPath;
 
 	if (Utils::isDirectory(fsPath))
 	{

@@ -6,7 +6,7 @@
 /*   By: jaime <jaime@student.42.fr>                +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/03/20 15:55:40 by miparis           #+#    #+#             */
-/*   Updated: 2026/05/28 13:05:00 by jaime            ###   ########.fr       */
+/*   Updated: 2026/06/18 17:18:12 by jaime            ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -19,15 +19,18 @@ ListenConfig::ListenConfig(const std::string &listenHost, int listenPort)
 	: host(listenHost), port(listenPort) {}
 
 LocationConfig::LocationConfig()
-	: path(""), root(""), index(), autoindex(false), allowMethods(),
-	  redirectTarget(""), redirectCode(301), clientMaxBodySize(0),
-	  cgiPath(), cgiExt(),
-	  hasRoot(false), hasIndex(false), hasAllowMethods(false),
-	  hasRedirect(false), hasClientMaxBodySize(false), hasAutoindex(false) {}
+	: path(""), root(""), uploadStore(""), index(), autoindex(false),
+	  allowMethods(), redirectTarget(""), redirectCode(301),
+	  clientMaxBodySize(0), cgiPath(), cgiExt(),
+	  hasRoot(false), hasUploadStore(false), hasIndex(false),
+	  hasAllowMethods(false), hasRedirect(false),
+	  hasClientMaxBodySize(false), hasAutoindex(false) {}
 
 ServerConfig::ServerConfig()
-	: host("0.0.0.0"), root(""), clientMaxBodySize(0), hasHost(false), hasRoot(false),
-	  hasIndex(false), hasClientMaxBodySize(false) {}
+	: host("0.0.0.0"), root(""), clientMaxBodySize(0),
+	  clientTimeout(60), keepaliveTimeout(10),
+	  hasHost(false), hasRoot(false), hasIndex(false),
+	  hasClientMaxBodySize(false), hasClientTimeout(false), hasKeepaliveTimeout(false) {}
 
 Config::Config() {}
 Config::~Config() {}

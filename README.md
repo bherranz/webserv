@@ -1,605 +1,144 @@
-# webserv
----
+*This project has been created as part of the 42 curriculum by bherranz, miparis, jaime.*
 
-# 1. Estructura general del proyecto
+## Description
 
-```
-webserv/
-│
-├── Makefile
-├── webserv
-├── README.md
-│
-├── config/
-│   └── default.conf
-│
-├── includes/
-│   ├── Server.hpp
-│   ├── Client.hpp
-│   ├── Config.hpp
-│   ├── ConfigParser.hpp
-│   ├── HttpRequest.hpp
-│   ├── HttpResponse.hpp
-│   ├── Router.hpp
-│   ├── CGIHandler.hpp
-│   └── Utils.hpp
-│
-├── src/
-│   ├── main.cpp
-│   │
-│   ├── server/
-│   │   ├── Server.cpp
-│   │   └── Client.cpp
-│   │
-│   ├── config/
-│   │   ├── Config.cpp
-│   │   └── ConfigParser.cpp
-│   │
-│   ├── http/
-│   │   ├── HttpRequest.cpp
-│   │   ├── HttpResponse.cpp
-│   │   └── Router.cpp
-│   │
-│   ├── cgi/
-│   │   └── CGIHandler.cpp
-│   │
-│   └── utils/
-│       └── Utils.cpp
-│
-└── www/
-    ├── index.html
-    ├── error/
-    │   ├── 404.html
-    │   └── 500.html
-    └── uploads/
+webserv is an HTTP/1.1 server written in C++98 from scratch. It uses a single `poll()` event loop for all I/O, parses an nginx-style configuration file, serves static files, executes CGI scripts, and handles file uploads. The project is part of the 42 Madrid common core and explores the HTTP protocol, non-blocking socket programming, and process management.
+
+### Features
+
+- **HTTP/1.1** — GET, POST, DELETE methods; chunked transfer encoding; keep-alive connections
+- **Configuration** — nginx-style config file with server blocks, locations, directives
+- **Static files** — Serve files with automatic MIME type detection, directory listing (autoindex)
+- **CGI/1.1** — Execute Python and Shell scripts via fork+execve with full environment variables, 5-second timeout, 504 Gateway Timeout on expiry
+- **File upload** — POST body stored as file; configurable `upload_store` directory
+- **Error pages** — Built-in error pages for 4xx/5xx; custom pages via `error_page` directive
+- **Redirects** — 301/302/307 via `return` directive
+- **Virtual hosts** — Route requests by `Host` header matching `server_name`
+- **Timeouts** — Configurable `client_timeout` (default 60s) and `keepalive_timeout` (default 10s); 408 Request Timeout response
+- **Non-blocking** — Single `poll()` for all client and listen socket I/O
+- **C++98** — Fully compliant, compiles with `-std=c++98 -Wall -Wextra -Werror`
+
+## Instructions
+
+### Dependencies
+
+- C++ compiler (g++ or clang++)
+- Make
+- Linux or macOS
+
+### Build
+
+```sh
+git clone <repository-url>
+cd webserv/webserv
+make
 ```
 
-Esta estructura separa claramente:
+### Run
 
-```
-network
-config
-http
-cgi
-utils
+```sh
+./Webserv [configuration-file]
 ```
 
-Esto **queda muy bien en defensa** porque muestra diseño modular.
+If no configuration file is provided, `web.config` is used by default.
 
----
+### Configuration
 
-# 2. main.cpp
-
-Este archivo solo debe **inicializar todo**.
-
-Responsabilidades:
-
-```
-1 leer argumentos
-2 cargar config
-3 crear servidor
-4 iniciar loop
-```
-
-Ejemplo conceptual:
-
-```cpp
-int main(int argc, char **argv)
-{
-    ConfigParser parser;
-    Config config = parser.parse(argv[1]);
-
-    Server server(config);
-    server.start();
-}
-```
-
-Importante:
-En 42 valoran que **main sea muy pequeño**.
-
----
-
-# 3. Server
-
-Archivos:
-
-```
-Server.hpp
-Server.cpp
-```
-
-Responsabilidad:
-
-Gestionar **todo el servidor**.
-
-Contiene:
-
-```
-socket
-bind
-listen
-poll
-accept
-manejo de clientes
-```
-
-Variables típicas:
-
-```cpp
-int server_socket;
-std::vector<pollfd> fds;
-std::map<int, Client> clients;
-```
-
-Funciones importantes:
-
-```
-initSocket()
-start()
-runLoop()
-acceptClient()
-handleClient()
-```
-
-El loop principal suele ser:
-
-```
-while (true)
-{
-    poll()
-
-    if (new connection)
-        accept()
-
-    if (client data)
-        handle request
-}
-```
-
----
-
-# 4. Client
-
-Archivos:
-
-```
-Client.hpp
-Client.cpp
-```
-
-Representa **un cliente conectado**.
-
-Cada cliente tiene:
-
-```
-socket
-request buffer
-response buffer
-estado
-```
-
-Ejemplo:
-
-```cpp
-class Client
-{
-    int socket;
-    std::string requestBuffer;
-    std::string responseBuffer;
-};
-```
-
-Responsabilidades:
-
-```
-guardar request
-guardar response
-estado del cliente
-```
-
-Esto evita mezclar lógica en `Server`.
-
----
-
-# 5. ConfigParser
-
-Archivos:
-
-```
-ConfigParser.hpp
-ConfigParser.cpp
-```
-
-Responsabilidad:
-
-Leer el archivo:
-
-```
-default.conf
-```
-
-y convertirlo en estructuras C++.
-
-Ejemplo de config:
+The configuration file uses an nginx-like syntax:
 
 ```
 server {
     listen 8080;
+    server_name localhost;
+    host 0.0.0.0;
     root ./www;
+    index index.html;
+    client_max_body_size 1000000;
+    client_timeout 60;
+    keepalive_timeout 10;
 
-    location /images {
-        root ./assets;
+    location / {
+        allow_methods GET POST DELETE;
+        autoindex on;
+    }
+
+    location /cgi-bin {
+        allow_methods GET POST DELETE;
+        cgi_path /usr/bin/python3 /bin/bash;
+        cgi_ext .py .sh;
+    }
+
+    location /uploads {
+        allow_methods GET POST DELETE;
+        upload_store ./www/uploads;
     }
 }
 ```
 
-El parser debe:
+#### Directives
 
-```
-leer lineas
-tokenizar
-crear estructuras
-```
+| Directive | Context | Description |
+|---|---|---|
+| `listen` | server | Port to listen on |
+| `server_name` | server | Virtual host name |
+| `host` | server | IP address to bind |
+| `root` | server/location | Document root directory |
+| `index` | server/location | Default file for directory requests |
+| `autoindex` | location | Enable directory listing (`on`/`off`) |
+| `allow_methods` | location | Allowed HTTP methods (`GET POST DELETE`) |
+| `client_max_body_size` | server/location | Maximum request body size in bytes |
+| `client_timeout` | server | Max seconds to wait for a complete request |
+| `keepalive_timeout` | server | Max seconds idle before closing keep-alive |
+| `cgi_path` | location | CGI interpreter paths |
+| `cgi_ext` | location | CGI file extensions |
+| `return` | location | URL redirect (optional status code) |
+| `error_page` | server | Custom error page (`code path`) |
+| `upload_store` | location | Directory for uploaded files |
 
-Salida típica:
+### Usage examples
 
-```cpp
-Config
- └── vector<ServerConfig>
-```
+```sh
+# Serve static file
+curl http://localhost:8080/index.html
 
----
+# Upload a file
+curl -X POST -d "hello world" http://localhost:8080/uploads/test.txt
 
-# 6. Config
+# Delete a file
+curl -X DELETE http://localhost:8080/cgi-bin/test.txt
 
-Archivos:
+# CGI
+curl http://localhost:8080/cgi-bin/test.py
 
-```
-Config.hpp
-Config.cpp
-```
+# Keep-alive
+curl -H "Connection: keep-alive" http://localhost:8080/
 
-Define las estructuras de configuración.
+# Chunked upload
+printf "5\r\nHello\r\n0\r\n\r\n" | curl -X POST -H "Transfer-Encoding: chunked" \
+  --data-binary @- http://localhost:8080/uploads/chunked.txt
 
-Ejemplo:
+# Directory listing
+curl http://localhost:8080/uploads/
 
-```cpp
-struct Location
-{
-    std::string path;
-    std::string root;
-    std::vector<std::string> methods;
-};
-
-struct ServerConfig
-{
-    int port;
-    std::string root;
-    std::vector<Location> locations;
-};
-```
-
-Esto se usa luego para **decidir cómo responder**.
-
----
-
-# 7. HttpRequest
-
-Archivos:
-
-```
-HttpRequest.hpp
-HttpRequest.cpp
+# Custom error page (server with error_page directive)
+curl http://localhost:8080/nonexistent
 ```
 
-Responsabilidad:
-
-Parsear una petición HTTP.
-
-Ejemplo de request:
-
-```
-GET /index.html HTTP/1.1
-Host: localhost
-Content-Length: 10
-```
-
-Debe extraer:
-
-```
-method
-path
-version
-headers
-body
-```
-
-Clase ejemplo:
-
-```cpp
-class HttpRequest
-{
-public:
-    std::string method;
-    std::string path;
-    std::map<std::string,std::string> headers;
-    std::string body;
-
-    void parse(std::string raw);
-};
-```
-
----
-
-# 8. HttpResponse
-
-Archivos:
-
-```
-HttpResponse.hpp
-HttpResponse.cpp
-```
-
-Responsabilidad:
-
-Construir respuestas HTTP.
-
-Ejemplo de output:
-
-```
-HTTP/1.1 200 OK
-Content-Type: text/html
-Content-Length: 20
-
-<html>Hello</html>
-```
-
-Clase ejemplo:
-
-```cpp
-class HttpResponse
-{
-public:
-    int statusCode;
-    std::string body;
-    std::map<std::string,std::string> headers;
-
-    std::string build();
-};
-```
-
----
-
-# 9. Router
-
-Archivos:
-
-```
-Router.hpp
-Router.cpp
-```
-
-Responsabilidad:
-
-Decidir **qué hacer con una request**.
-
-Ejemplo:
-
-```
-GET /index.html
-```
-
-Router decide:
-
-```
-buscar archivo
-ejecutar CGI
-error
-redirect
-```
-
-Flujo:
-
-```
-request
-   ↓
-router
-   ↓
-response
-```
-
-Funciones:
-
-```
-handleGet()
-handlePost()
-handleDelete()
-```
-
----
-
-# 10. CGIHandler
-
-Archivos:
-
-```
-CGIHandler.hpp
-CGIHandler.cpp
-```
-
-Responsabilidad:
-
-Ejecutar scripts CGI.
-
-Ejemplo:
-
-```
-GET /script.py
-```
-
-Servidor hace:
-
-```
-fork()
-execve("python script.py")
-pipe()
-```
-
-Debe:
-
-```
-enviar request al CGI
-leer output
-devolverlo al cliente
-```
-
-Esto es una de las partes **más difíciles del proyecto**.
-
----
-
-# 11. Utils
-
-Archivos:
-
-```
-Utils.hpp
-Utils.cpp
-```
-
-Funciones útiles:
-
-```
-string split
-trim
-int to string
-file exists
-mime type
-```
-
-Ejemplo:
-
-```cpp
-std::vector<std::string> split(std::string str, char delimiter);
-```
-
-Esto evita duplicar código.
-
----
-
-# 12. Carpeta www
-
-Aquí van los archivos que el servidor sirve.
-
-Ejemplo:
-
-```
-www/
-  index.html
-  images/
-  uploads/
-  error/
-```
-
-Tu servidor leerá archivos desde aquí.
-
----
-
-# 13. Flujo completo del programa
-
-Cuando alguien abre:
-
-```
-http://localhost:8080/index.html
-```
-
-ocurre esto:
-
-```
-main
- ↓
-Server.start()
-
-poll()
-
-cliente conecta
- ↓
-accept()
-
-cliente manda request
- ↓
-HttpRequest.parse()
-
-Router
-
- ↓
-si archivo
-     leer archivo
-
-si CGI
-     ejecutar CGI
-
- ↓
-HttpResponse.build()
-
- ↓
-send()
-```
-
----
-
-# 14. Cómo dividirlo entre 3 personas
-
-Una división muy equilibrada:
-
-### Persona 1 — Networking
-
-Archivos:
-
-```
-Server
-Client
-poll loop
-socket
-```
-
----
-
-### Persona 2 — HTTP
-
-Archivos:
-
-```
-HttpRequest
-HttpResponse
-Router
-```
-
----
-
-### Persona 3 — Config + CGI
-
-Archivos:
-
-```
-Config
-ConfigParser
-CGIHandler
-```
-
----
-
-# 15. Algo que los evaluadores miran mucho
-
-Durante la defensa preguntan:
-
-**¿por qué separaste estas clases?**
-
-Respuesta correcta:
-
-```
-Server → networking
-HttpRequest → parsing
-HttpResponse → building responses
-Router → decidir comportamiento
-ConfigParser → leer config
-CGIHandler → ejecutar scripts
+## Resources
+
+- [RFC 7230 — HTTP/1.1 Message Syntax and Routing](https://tools.ietf.org/html/rfc7230)
+- [RFC 7231 — HTTP/1.1 Semantics and Content](https://tools.ietf.org/html/rfc7231)
+- [RFC 3875 — CGI/1.1](https://tools.ietf.org/html/rfc3875)
+- [NGINX documentation](https://nginx.org/en/docs/)
+- [Beej's Guide to Network Programming](https://beej.us/guide/bgnet/)
+
+### AI use
+
+AI (Claude via opencode) was used for:
+- Code generation and refactoring (Server event loop, Router, CGI, Config parser)
+- Debugging (body double-append bug, keep-alive timeout, valgrind analysis)
+- Code review and C++98 compliance verification
+- Test scripting
+- Documentation and this README
+
+All AI-generated code was reviewed, tested, and modified by the authors.

@@ -233,18 +233,18 @@ void Server::handleClientRead(int fd)
 				}
 				else
 				{
-					if (it->second.isTimedOut(CLIENT_TIMEOUT))
-					{
-						HttpResponse response;
-						response.setStatus(408, "Request Timeout");
-						std::string body = "<html><body><h1>408 Request Timeout</h1></body></html>";
-						response.setBody(body);
-						response.setContentType("text/html");
-						response.setContentLength(body.size());
-						it->second.outBuffer() = response.toString();
-						_pendingRequests.erase(fd);
-						return;
-					}
+				if (it->second.isTimedOut(getServerForClient(fd).clientTimeout))
+				{
+					HttpResponse response;
+					response.setStatus(408, "Request Timeout");
+					std::string body = "<html><body><h1>408 Request Timeout</h1></body></html>";
+					response.setBody(body);
+					response.setContentType("text/html");
+					response.setContentLength(body.size());
+					it->second.outBuffer() = response.toString();
+					_pendingRequests.erase(fd);
+					return;
+				}
 					return;
 				}
 			}
@@ -369,6 +369,17 @@ bool Server::isListenFd(int fd) const {
 	return _listenOwners.find(fd) != _listenOwners.end();
 }
 
+const ServerConfig &Server::getServerForClient(int fd) const
+{
+	std::map<int, std::size_t>::const_iterator it = _clientServers.find(fd);
+	std::size_t idx = 0;
+	if (it != _clientServers.end())
+		idx = it->second;
+	if (idx >= _config.servers().size())
+		idx = 0;
+	return _config.servers()[idx];
+}
+
 bool Server::shouldKeepAlive(const HttpRequest &req) const
 {
 	std::map<std::string, std::string>::const_iterator it = req._headers.find("Connection");
@@ -389,7 +400,8 @@ void Server::checkTimeouts()
 	while (it != _clients.end())
 	{
 		int fd = it->first;
-		time_t timeout = it->second.keepAlive() ? KEEPALIVE_TIMEOUT : CLIENT_TIMEOUT;
+		const ServerConfig &sc = getServerForClient(fd);
+		time_t timeout = it->second.keepAlive() ? sc.keepaliveTimeout : sc.clientTimeout;
 
 		if (it->second.isTimedOut(timeout))
 		{
@@ -417,9 +429,10 @@ void Server::checkTimeouts()
 }
 
 void Server::run() {
+	static const int pollTimeoutMs = 1000;
 	while (true) {
 		rebuildPollFds();
-		int ready = ::poll(&_pollFds[0], _pollFds.size(), POLL_TIMEOUT_MS);
+		int ready = ::poll(&_pollFds[0], _pollFds.size(), pollTimeoutMs);
 		if (ready < 0) {
 			if (errno == EINTR)
 				continue;

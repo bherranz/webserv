@@ -6,7 +6,7 @@
 /*   By: jaime <jaime@student.42.fr>                +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/03/20 15:55:25 by miparis           #+#    #+#             */
-/*   Updated: 2026/05/28 13:05:00 by jaime            ###   ########.fr       */
+/*   Updated: 2026/06/18 17:24:51 by jaime            ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -19,6 +19,7 @@
 #include <limits>
 #include <sstream>
 #include <stdexcept>
+#include <iostream>
 
 namespace {
 	struct Token {
@@ -233,6 +234,10 @@ namespace {
 					location.root = expectIdentifier();
 					location.hasRoot = true;
 					expect(";");
+				} else if (directive == "upload_store") {
+					location.uploadStore = expectIdentifier();
+					location.hasUploadStore = true;
+					expect(";");
 				} else if (directive == "index") {
 					location.index.clear();
 					while (!eof() && !match(";"))
@@ -336,6 +341,14 @@ namespace {
 					std::string page = values.back();
 					for (std::size_t i = 0; i + 1 < values.size(); ++i)
 						server.errorPages[parseStatusCode(directiveToken, values[i])] = page;
+				} else if (directive == "client_timeout") {
+					server.clientTimeout = static_cast<int>(parseBodySize(directiveToken, expectIdentifier()));
+					server.hasClientTimeout = true;
+					expect(";");
+				} else if (directive == "keepalive_timeout") {
+					server.keepaliveTimeout = static_cast<int>(parseBodySize(directiveToken, expectIdentifier()));
+					server.hasKeepaliveTimeout = true;
+					expect(";");
 				} else if (directive == "location") {
 					LocationConfig location = parseLocation(server);
 					server.locations.push_back(location);

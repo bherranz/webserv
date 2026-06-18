@@ -67,24 +67,28 @@
 <div class="card">
   <span class="tag tag-post">POST</span>
   <h3>File upload</h3>
-  <p>Upload a file to the server (body stored at path).</p>
-  <form action="/uploads/demo.txt" method="POST">
-    <input type="text" name="content" value="hello from webserv" size="22">
-    <button class="btn btn-post" type="submit">Upload</button>
-  </form>
-  <small>Uploads to <code>/uploads/demo.txt</code></small>
+  <p>Upload a file to the server. The request body becomes the file content.</p>
+  <input type="text" id="uploadContent" value="hello from webserv" size="22">
+  <button class="btn btn-post" onclick="fetch('/uploads/demo.txt',{method:'POST',
+    body:document.getElementById('uploadContent').value}).then(r=>r.status==201
+      ?alert('Created /uploads/demo.txt') :alert('POST returned '+r.status))">Upload</button>
+  <br><small>Uploads to <code>/uploads/demo.txt</code>.
+  <a href="#" onclick="fetch('/uploads/demo.txt').then(r=>r.text()).then(t=>
+    fetch('/cgi-bin/demo.txt',{method:'POST',body:t})).then(r=>r.status==201
+      ?alert('Copied to /cgi-bin/demo.txt') :alert('Copy failed: '+r.status));
+    return false">Copy to /cgi-bin/</a> for DELETE.</small>
 </div>
 
 <div class="card">
   <span class="tag tag-delete">DELETE</span>
   <h3>File removal</h3>
-  <p>Remove files from the filesystem.</p>
-  <form action="/" method="GET" onsubmit="event.preventDefault();
-    fetch(this.action + 'uploads/demo.txt', {method:'DELETE'}).then(r=>r.status==204
-      ?alert('Deleted') :alert('DELETE returned '+r.status))">
-    <button class="btn btn-delete" type="submit">Delete /uploads/demo.txt</button>
-  </form>
-  <small>DELETE requires <code>/cgi-bin/</code> path or other allowed location</small>
+  <p>Remove files via <code>DELETE</code> method. Only allowed in <code>/cgi-bin/</code>.</p>
+  <button class="btn btn-delete" onclick="fetch('/cgi-bin/demo.txt',{method:'DELETE'})
+    .then(r=>r.status==204?alert('Deleted /cgi-bin/demo.txt')
+      :alert('DELETE returned '+r.status))">
+    Delete /cgi-bin/demo.txt
+  </button>
+  <br><small>Use <b>Copy to /cgi-bin/</b> above first, then delete.</small>
 </div>
 
 </div>
