@@ -4,6 +4,12 @@
 #include <map>
 #include <string>
 #include <vector>
+#include <fstream>
+#include <sstream>
+#include <stdexcept>
+#include <iostream>
+#include <cstdlib>
+
 
 struct ListenConfig
 {
@@ -11,7 +17,7 @@ struct ListenConfig
 	int			port;
 
 	ListenConfig();
-	ListenConfig(const std::string &listenHost, int listenPort);
+	ListenConfig(const std::string &listenHost, int listenPort);//check, tenemos los valores de port y host separados gracias al parseo del config ver si lo reemplazamos fuera del const
 };
 
 struct LocationConfig
@@ -67,14 +73,15 @@ class Config
 {
 	public:
 	Config();
-	~Config();
 	explicit Config(const std::string &path);
 
 	void	load(const std::string &path);
 
 	std::vector<ServerConfig> &servers();
 	const std::vector<ServerConfig> &servers() const;
+	void print() const;
 
 	private:
 	std::vector<ServerConfig> _servers;
+
 };
