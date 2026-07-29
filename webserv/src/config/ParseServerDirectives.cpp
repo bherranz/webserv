@@ -91,20 +91,3 @@ void ConfigParser::parseKeepaliveTimeout(const std::vector<std::string>& tokens,
 	server.keepaliveTimeout = std::atoi(tokens[1].c_str());
 	server.hasKeepaliveTimeout = true;
 }
-
-template <typename T>
-void ConfigParser::parseAutoindex(const std::vector<std::string>& tokens, T& config)
-{
-    validateSemicolon(tokens);
-    if (tokens.size() != 3)
-        throw std::runtime_error("config error: invalid arguments in 'autoindex'");
-
-    if (tokens[1] == "on")
-        config.autoindex = true;
-    else if (tokens[1] == "off")
-        config.autoindex = false;
-    else
-        throw std::runtime_error("config error: autoindex must be 'on' or 'off'");
-    
-    config.hasAutoindex = true;
-}

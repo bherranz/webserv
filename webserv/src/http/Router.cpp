@@ -1,5 +1,6 @@
 #include "Router.hpp"
 #include "Utils.hpp"
+#include "Config.hpp"
 
 #include <sys/stat.h>
 #include <unistd.h>
@@ -77,29 +78,11 @@ std::string Router::resolvePath(const std::string &uriPath, const LocationConfig
 
 	return fullPath;
 }
-	/*
-	// BORRAR ESTO:
-	// if (loc.hasAutoindex && loc.autoindex) {
-	//     handleAutoindex(fsPath, res);
-	//     return;
-	// }
-
-	// PONER ESTO:
-	bool isAutoindex = false;
-	if (loc.hasAutoindex) 
-		isAutoindex = loc.autoindex;
-	else if (server.hasAutoindex) 
-		isAutoindex = server.autoindex;
-
-	if (isAutoindex) {
-		handleAutoindex(fsPath, res);
-		return;
-	}*/
+	
 std::string Router::resolveIndex(const std::string &dirPath, const LocationConfig &loc, const ServerConfig &server) const
 {
 	const std::vector<std::string> *indexList = NULL;
 	std::vector<std::string> fallback;
-
 	if (loc.hasIndex && !loc.index.empty())
 		indexList = &loc.index;
 	else if (server.hasIndex && !server.index.empty())
@@ -206,12 +189,20 @@ void Router::handleGet(const HttpRequest &req, HttpResponse &res, const Location
 			res.setContentLength(content.size());
 			return;
 		}
+	else
+	{
+		bool isAutoindex = false;
+		if (loc.hasAutoindex) 
+			isAutoindex = loc.autoindex; // Prioridad 1: Lo que diga la Location
+		else if (server.hasAutoindex) 
+			isAutoindex = server.autoindex; // Prioridad 2: Lo que diga el Server
 
-		if (loc.hasAutoindex && loc.autoindex)
+		if (isAutoindex)
 		{
 			handleAutoindex(fsPath, res);
 			return;
 		}
+		
 		buildErrorResponse(res, 403, server);
 		return;
 	}
@@ -234,6 +225,7 @@ void Router::handleGet(const HttpRequest &req, HttpResponse &res, const Location
 	}
 
 	buildErrorResponse(res, 404, server);
+	}
 }
 
 void Router::handlePost(const HttpRequest &req, HttpResponse &res, const LocationConfig &loc, const ServerConfig &server)

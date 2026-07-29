@@ -66,7 +66,7 @@ struct ServerConfig
 	bool	hasClientTimeout;
 	bool	hasKeepaliveTimeout;
 	bool	autoindex;
-	bool	hasAutoIndex;
+	bool	hasAutoindex;
 
 	ServerConfig();
 };

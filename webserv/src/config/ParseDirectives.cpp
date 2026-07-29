@@ -43,6 +43,24 @@ void ConfigParser::parseClientMaxBodySize(const std::vector<std::string>& tokens
 	config.hasClientMaxBodySize = true;
 }
 
+
+template <typename T>
+void ConfigParser::parseAutoindex(const std::vector<std::string>& tokens, T& config)
+{
+    validateSemicolon(tokens);
+    if (tokens.size() != 3)
+        throw std::runtime_error("config error: invalid arguments in 'autoindex'");
+
+    if (tokens[1] == "on")
+        config.autoindex = true; // CORRECTO: sin nombrar a ServerConfig
+    else if (tokens[1] == "off")
+        config.autoindex = false; // CORRECTO
+    else
+        throw std::runtime_error("config error: autoindex must be 'on' or 'off'");
+    
+    config.hasAutoindex = true; // CORRECTO
+}
+
 // ==========================================================================
 // Maps innit
 // ==========================================================================
