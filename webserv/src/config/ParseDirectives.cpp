@@ -56,6 +56,7 @@ void ConfigParser::initDirectiveParsers()
 	_serverParsers["host"] = &ConfigParser::parseHost; //->> NGNIX DOEST SAVE THE HOST INDEPENDANTLY, IT ALWAYS GOES IN THE LISTEN BLOCK -- CHECK IF DELETE
     _serverParsers["client_timeout"] = &ConfigParser::parseClientTimeout;
     _serverParsers["keepalive_timeout"] = &ConfigParser::parseKeepaliveTimeout;
+	_serverParsers["autoindex"] = &ConfigParser::parseAutoindex<ServerConfig>; // <--- Añadir
 
 	// The following use the templates using ServerConfig
 	_serverParsers["root"] = &ConfigParser::parseRoot<ServerConfig>;
@@ -64,7 +65,7 @@ void ConfigParser::initDirectiveParsers()
 
 	// --- LOCATION MAP ---
 	_locationParsers["allow_methods"] = &ConfigParser::parseAllowMethods;
-	_locationParsers["autoindex"] = &ConfigParser::parseAutoindex;
+	_locationParsers["autoindex"] = &ConfigParser::parseAutoindex<LocationConfig>;
 	_locationParsers["upload_store"] = &ConfigParser::parseUploadStore;
 	_locationParsers["cgi_path"] = &ConfigParser::parseCgiPath;
 	_locationParsers["cgi_ext"] = &ConfigParser::parseCgiExt;

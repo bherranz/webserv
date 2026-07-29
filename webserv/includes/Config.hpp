@@ -65,6 +65,8 @@ struct ServerConfig
 	bool	hasClientMaxBodySize;
 	bool	hasClientTimeout;
 	bool	hasKeepaliveTimeout;
+	bool	autoindex;
+	bool	hasAutoIndex;
 
 	ServerConfig();
 };

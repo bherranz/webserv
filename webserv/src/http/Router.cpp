@@ -77,7 +77,24 @@ std::string Router::resolvePath(const std::string &uriPath, const LocationConfig
 
 	return fullPath;
 }
+	/*
+	// BORRAR ESTO:
+	// if (loc.hasAutoindex && loc.autoindex) {
+	//     handleAutoindex(fsPath, res);
+	//     return;
+	// }
 
+	// PONER ESTO:
+	bool isAutoindex = false;
+	if (loc.hasAutoindex) 
+		isAutoindex = loc.autoindex;
+	else if (server.hasAutoindex) 
+		isAutoindex = server.autoindex;
+
+	if (isAutoindex) {
+		handleAutoindex(fsPath, res);
+		return;
+	}*/
 std::string Router::resolveIndex(const std::string &dirPath, const LocationConfig &loc, const ServerConfig &server) const
 {
 	const std::vector<std::string> *indexList = NULL;

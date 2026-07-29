@@ -49,6 +49,9 @@ class ConfigParser
     template <typename T>
     void parseClientMaxBodySize(const std::vector<std::string>& tokens, T& config);
 
+	template <typename T>
+    void parseAutoindex(const std::vector<std::string>& tokens, T& config); // <--- Nueva
+
 	/*-----------------------  Location directives 			 -------------------------------------*/
 	void parseAllowMethods(const std::vector<std::string>& tokens, LocationConfig& location);
     void parseAutoindex(const std::vector<std::string>& tokens, LocationConfig& location);
