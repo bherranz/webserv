@@ -11,7 +11,7 @@
 # **************************************************************************** #
 
 
-NAME = Webserv
+NAME = webserv
 
 SRCS =  src/main.cpp \
 		src/server/Server.cpp \

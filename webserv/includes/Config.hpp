@@ -33,6 +33,7 @@ struct LocationConfig
 	std::size_t				clientMaxBodySize;
 	std::vector<std::string>	cgiPath;
 	std::vector<std::string>	cgiExt;
+	std::map<std::string, std::string>	cgiMap;
 
 	bool	hasRoot;
 	bool	hasUploadStore;
