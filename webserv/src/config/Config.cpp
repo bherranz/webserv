@@ -6,7 +6,7 @@
 /*   By: miparis <miparis@student.42madrid.com>     +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/03/20 15:55:40 by miparis           #+#    #+#             */
-/*   Updated: 2026/07/29 17:05:54 by miparis          ###   ########.fr       */
+/*   Updated: 2026/07/29 18:03:31 by miparis          ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -44,7 +44,7 @@ ConfigParser::ConfigParser()
 ServerConfig::ServerConfig() : 
     clientMaxBodySize(0), clientTimeout(60), keepaliveTimeout(10),
     hasHost(false), hasRoot(false), hasIndex(false), 
-    hasClientMaxBodySize(false), hasClientTimeout(false), hasKeepaliveTimeout(false), autoindex(false), hasAutoIndex(false) 
+    hasClientMaxBodySize(false), hasClientTimeout(false), hasKeepaliveTimeout(false), autoindex(false), hasAutoindex(false) 
 {
 }
 

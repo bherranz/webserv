@@ -30,19 +30,6 @@ std::string ConfigParser::trim(const std::string& line) const
     return line.substr(start, end - start);
 }
 
-/*
-** Convierte una línea en tokens:
-** - separa por espacios
-** - separa '{', '}' y ';' aunque estén pegados a una palabra
-**
-** Ejemplos:
-**   "listen 8080;"      -> ["listen", "8080", ";"]
-**   "location / {"      -> ["location", "/", "{"]
-**   "server{"           -> ["server", "{"]
-**
-** !!!!!!!!!!!!!!!!!!!! No soporta strings con comillas por ahora!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-*/
-
 std::vector<std::string> ConfigParser::tokenize(const std::string& line) const
 {
     std::vector<std::string> tokens;
@@ -89,41 +76,49 @@ std::vector<ServerConfig> ConfigParser::execute(const std::string& path)
 	if (!file.is_open())
 		throw (std::runtime_error("config error: cannot open file '" + path + "'"));
 
-	//As we can have multiple servers, we create the vector to store al of them with its own data
 	std::vector<ServerConfig> servers;
-	std::vector<std::string> lines;
+	std::vector<std::vector<std::string> > statements;
+	std::vector<std::string> currentStatement;
 	std::string line;
 
+	// FASE 1: Group tokens in instrucctions
 	while (std::getline(file, line))
 	{
-		// we clean and store
 		line = removeComment(line);
 		line = trim(line);
-		if (!line.empty())
-			lines.push_back(line); //As we used vectors, we simply perform a push_back operation to add new data
-		std::cout << "LINE: [" << line << "]" << std::endl; // to be deleted
+		if (line.empty()) continue;
+
+		std::vector<std::string> lineTokens = tokenize(line);
+		
+		for (std::size_t j = 0; j < lineTokens.size(); j++)
+		{
+			currentStatement.push_back(lineTokens[j]);
+			
+			// If we find a delimitator, end and save instrucction
+			if (lineTokens[j] == "{" || lineTokens[j] == "}" || lineTokens[j] == ";")
+			{
+				statements.push_back(currentStatement);
+				currentStatement.clear();
+			}
+		}
 	}
-	if (lines.empty())
+	if (!currentStatement.empty())
+		statements.push_back(currentStatement);
+
+	if (statements.empty())
 		throw (std::runtime_error("config error: empty configuration file"));
 
-	for (std::size_t i = 0; i < lines.size(); ++i)
+	// FASE 2: Iterate and pass blocks to parse
+	for (std::size_t i = 0; i < statements.size(); ++i)
 	{
-		//we separate and clean the lines we detected and tokenize it so we can saved them separately
-		std::vector<std::string> tokens = tokenize(lines[i]);
-		if (tokens.empty())
-			continue;
+		const std::vector<std::string>& tokens = statements[i];
+		
+		if (tokens.empty()) continue;
 
-		//print to be deleted
-		std::cout << "TOKENS: ";
-		for (std::size_t j = 0; j < tokens.size(); j++)
-			std::cout << "[" << tokens[j] << "] ";
-		std::cout << std::endl;
-
-		if(isServerStart(tokens)) //as we can miss a key, we check wether it is at the start of the config
-			parseServerBlock(lines, i, servers);
+		if (isServerStart(tokens))
+			parseServerBlock(statements, i, servers);
 		else
 			throw (std::runtime_error("config error: expected 'server {' at top"));
-
 	}
 	return (servers);
 }
@@ -138,5 +133,6 @@ std::vector<ServerConfig> ConfigParser::parseFile(const std::string& path)
 void Config::load(const std::string &path)
 {
 	_servers = ConfigParser::parseFile(path);
+	validate();
 	print();
 }

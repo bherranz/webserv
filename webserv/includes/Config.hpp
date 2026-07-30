@@ -82,6 +82,7 @@ class Config
 	std::vector<ServerConfig> &servers();
 	const std::vector<ServerConfig> &servers() const;
 	void print() const;
+	void validate() const;
 
 	private:
 	std::vector<ServerConfig> _servers;

@@ -23,8 +23,8 @@ class ConfigParser
     bool isBlockEnd(const std::vector<std::string>& tokens) const;
     bool isLocationStart(const std::vector<std::string>& tokens) const;
 
-	void parseServerBlock(const std::vector<std::string>& lines, std::size_t& i, std::vector<ServerConfig>& servers);
-    void parseLocationBlock(const std::vector<std::string>& lines, std::size_t& i, ServerConfig& server);
+	void parseServerBlock(const std::vector<std::vector<std::string> >& statements, std::size_t& i, std::vector<ServerConfig>& servers);
+	void parseLocationBlock(const std::vector<std::vector<std::string> >& statements, std::size_t& i, ServerConfig& server);
  
 
 	/* ==========================   PARSE DIRECTIVES   ========================== */
@@ -54,7 +54,6 @@ class ConfigParser
 
 	/*-----------------------  Location directives 			 -------------------------------------*/
 	void parseAllowMethods(const std::vector<std::string>& tokens, LocationConfig& location);
-    void parseAutoindex(const std::vector<std::string>& tokens, LocationConfig& location);
     void parseUploadStore(const std::vector<std::string>& tokens, LocationConfig& location);
     void parseCgiPath(const std::vector<std::string>& tokens, LocationConfig& location);
     void parseCgiExt(const std::vector<std::string>& tokens, LocationConfig& location);
@@ -66,6 +65,7 @@ class ConfigParser
     void parseErrorPage(const std::vector<std::string>& tokens, ServerConfig& server);
 	void parseClientTimeout(const std::vector<std::string>& tokens, ServerConfig& server);
 	void parseKeepaliveTimeout(const std::vector<std::string>& tokens, ServerConfig& server);
+	
 	//->> NGNIX DOEST SAVE THE HOST INDEPENDANTLY, IT ALWAYS GOES IN THE LISTEN BLOCK -- CHECK IF DELETE
 	void parseHost(const std::vector<std::string>& tokens, ServerConfig& server);
 };

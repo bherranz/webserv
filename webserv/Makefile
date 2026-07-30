@@ -6,7 +6,7 @@
 #    By: miparis <miparis@student.42madrid.com>     +#+  +:+       +#+         #
 #                                                 +#+#+#+#+#+   +#+            #
 #    Created: 2026/03/20 15:49:56 by miparis           #+#    #+#              #
-#    Updated: 2026/06/29 12:17:42 by miparis          ###   ########.fr        #
+#    Updated: 2026/07/30 12:34:29 by miparis          ###   ########.fr        #
 #                                                                              #
 # **************************************************************************** #
 
@@ -22,6 +22,7 @@ SRCS =  src/main.cpp \
 		src/config/ParseDirectives.cpp \
 		src/config/ParseServerDirectives.cpp \
 		src/config/ParseLocationsDirectives.cpp \
+		src/config/configValidate.cpp \
 		src/http/HttpRequest.cpp \
 		src/http/HttpResponse.cpp \
 		src/http/Router.cpp \
