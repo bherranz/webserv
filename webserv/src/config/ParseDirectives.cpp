@@ -28,19 +28,25 @@ void ConfigParser::parseRoot(const std::vector<std::string>& tokens, T& config)
 	config.root = tokens[1];
 	config.hasRoot = true;
 }
-
 template <typename T>
 void ConfigParser::parseClientMaxBodySize(const std::vector<std::string>& tokens, T& config)
 {
-	validateSemicolon(tokens);
-	if (tokens.size() != 3)
-		throw std::runtime_error("config error: invalid number of arguments in 'client_maxBody_size'");
-	long long size = std::atol(tokens[1].c_str());
+    validateSemicolon(tokens);
+    if (tokens.size() != 3)
+        throw std::runtime_error("config error: invalid number of arguments in 'client_maxBody_size'");
+    
+    char *end = NULL;
+    long size = std::strtol(tokens[1].c_str(), &end, 10);
+    
+    // Si end no apunta al final (\0), hay basura (ej: 100a, 10MB sin soportar, etc)
+    if (end != NULL && *end != '\0')
+        throw std::runtime_error("config error: client_max_body_size must contain only numbers");
+
     if (size < 0)
         throw std::runtime_error("config error: client_max_body_size cannot be negative");
     
     config.clientMaxBodySize = static_cast<std::size_t>(size);
-	config.hasClientMaxBodySize = true;
+    config.hasClientMaxBodySize = true;
 }
 
 
