@@ -1,7 +1,4 @@
 #include "HttpResponse.hpp"
-#include "Utils.hpp"
-
-#include <sstream>
 
 HttpResponse::HttpResponse()
 	: _statusCode(200), _statusReason("OK") {}

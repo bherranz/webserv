@@ -170,6 +170,7 @@ void Router::handleGet(const HttpRequest &req, HttpResponse &res, const Location
 {
 	std::string fsPath = resolvePath(req._path, loc, server);
 
+	// 1. Si es un Directorio
 	if (Utils::isDirectory(fsPath))
 	{
 		std::string indexPath = resolveIndex(fsPath, loc, server);
@@ -189,22 +190,23 @@ void Router::handleGet(const HttpRequest &req, HttpResponse &res, const Location
 			res.setContentLength(content.size());
 			return;
 		}
-	else
-	{
-		bool isAutoindex = false;
-		if (loc.hasAutoindex) 
-			isAutoindex = loc.autoindex; // Prioridad 1: Lo que diga la Location
-		else if (server.hasAutoindex) 
-			isAutoindex = server.autoindex; // Prioridad 2: Lo que diga el Server
-
-		if (isAutoindex)
+		else
 		{
-			handleAutoindex(fsPath, res);
+			bool isAutoindex = false;
+			if (loc.hasAutoindex) 
+				isAutoindex = loc.autoindex; // Prioridad 1: Lo que diga la Location
+			else if (server.hasAutoindex) 
+				isAutoindex = server.autoindex; // Prioridad 2: Lo que diga el Server
+
+			if (isAutoindex)
+			{
+				handleAutoindex(fsPath, res);
+				return;
+			}
+			
+			buildErrorResponse(res, 403, server);
 			return;
 		}
-		
-		buildErrorResponse(res, 403, server);
-		return;
 	}
 
 	if (Utils::fileExists(fsPath))
@@ -225,8 +227,8 @@ void Router::handleGet(const HttpRequest &req, HttpResponse &res, const Location
 	}
 
 	buildErrorResponse(res, 404, server);
-	}
 }
+
 
 void Router::handlePost(const HttpRequest &req, HttpResponse &res, const LocationConfig &loc, const ServerConfig &server)
 {

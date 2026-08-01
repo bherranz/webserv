@@ -1,7 +1,5 @@
 #include "HttpRequest.hpp"
 
-#include <cstdlib>
-
 HttpRequest::HttpRequest()
 	: _headersDone(false), _contentLength(0), _chunked(false) {}
 
@@ -16,15 +14,22 @@ bool HttpRequest::bodyComplete()
 		return false;
 	if (_chunked)
 	{
-		if (_body.find("0\r\n\r\n") != std::string::npos)
+		try
 		{
-			parseChunkedBody();
-			_chunked = false;
-			_contentLength = _body.size();
-			return true;
+			if (parseChunkedBody())
+			{
+				_chunked = false;
+				_contentLength = _body.size();
+				return true;
+			}
+			return false;
 		}
-		return false;
+		catch ( const std::exception& e)
+		{
+			throw std::runtime_error("Header error: Malformed chunked body");
+		}
 	}
+
 	if (_contentLength == 0)
 		return true;
 	return _body.size() >= _contentLength;
@@ -58,13 +63,12 @@ bool HttpRequest::parse(const std::string &raw)
 			_headersDone = true;
 			break;
 		}
-		if (_headers.find(line.substr(0, line.find(':'))) == _headers.end())
-			parseHeaderLine(line);
+		parseHeaderLine(line);
 	}
 
 	if (_headersDone)
 	{
-		std::map<std::string, std::string>::iterator cl = _headers.find("Content-Length");
+		std::map<std::string, std::string>::iterator cl = _headers.find("content-length");
 		if (cl != _headers.end())
 		{
 			char *end = NULL;
@@ -73,7 +77,7 @@ bool HttpRequest::parse(const std::string &raw)
 				_contentLength = static_cast<std::size_t>(len);
 		}
 
-		std::map<std::string, std::string>::iterator te = _headers.find("Transfer-Encoding");
+		std::map<std::string, std::string>::iterator te = _headers.find("transfer-encoding");
 		if (te != _headers.end() && te->second.find("chunked") != std::string::npos)
 			_chunked = true;
 	}
@@ -90,30 +94,50 @@ bool HttpRequest::parseChunkedBody()
 	{
 		std::size_t endLine = _body.find("\r\n", i);
 		if (endLine == std::string::npos)
-			break;
-
-		std::string hexStr = _body.substr(i, endLine - i);
-		char *end = NULL;
-		long chunkSize = std::strtol(hexStr.c_str(), &end, 16);
-		if (end == NULL || *end != '\0' || chunkSize < 0)
 			return false;
 
+		std::string hexStr = _body.substr(i, endLine - i);
+
+		//if we find the "0\r\n\r\n" secuense it has to come with ; hence we pass it  so it doesnt breaks the header
+		std::size_t semi = hexStr.find(';');
+		if (semi != std::string::npos)
+			hexStr = hexStr.substr(0, semi);
+
+		// we check again for trash values
+		if (hexStr.find_first_not_of("0123456789abcdefABCDEF") != std::string::npos)
+			throw std::runtime_error("Invalid chunk size format");
+
+		char *end = NULL;
+		//we do a conversion to hec to check to check size
+		long chunkSize = std::strtol(hexStr.c_str(), &end, 16);
+		if (end == NULL || *end != '\0' || chunkSize < 0)
+			throw std::runtime_error("Malformed chunk size");
+			
 		if (chunkSize == 0)
 		{
-			_body = decoded;
-			return true;
+			if (endLine + 2 <= _body.size())
+			{
+				_body = decoded;
+				return true;
+			}
+			return false;
 		}
 
-		std::size_t chunkStart = endLine + 2;
-		if (chunkStart + static_cast<std::size_t>(chunkSize) > _body.size())
-			break;
+		std::size_t chunkDataStart = endLine + 2;
+		std::size_t nextChunkStart = chunkDataStart + static_cast<std::size_t>(chunkSize) + 2; // +2 por el CRLF final
 
-		decoded.append(_body, chunkStart, static_cast<std::size_t>(chunkSize));
-		i = chunkStart + static_cast<std::size_t>(chunkSize) + 2;
+		if (nextChunkStart > _body.size())
+			return false; // Incomplete chunck
+
+		// Check for \r\n at end
+		if (_body.compare(chunkDataStart + chunkSize, 2, "\r\n") != 0)
+			throw std::runtime_error("Missing CRLF after chunk data");
+
+		decoded.append(_body, chunkDataStart, static_cast<std::size_t>(chunkSize));
+		i = nextChunkStart;
 	}
 
-	_body = decoded;
-	return true;
+	return false;
 }
 
 void HttpRequest::parseRequestLine(const std::string &line)
@@ -137,6 +161,9 @@ void HttpRequest::parseHeaderLine(const std::string &line)
 
 	if (!value.empty() && value[0] == ' ')
 		value.erase(0, 1);
+	
+	for (std::size_t i = 0; i < key.length(); ++i)
+		key[i] = std::tolower(static_cast<unsigned char>(key[i]));
 
 	_headers[key] = value;
 }

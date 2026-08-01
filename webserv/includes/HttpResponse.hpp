@@ -1,7 +1,9 @@
 #pragma once
 
 #include <string>
+#include <sstream>
 #include <map>
+#include "Utils.hpp"
 
 class HttpResponse
 {
