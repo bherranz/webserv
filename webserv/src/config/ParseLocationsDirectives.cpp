@@ -16,7 +16,7 @@ void ConfigParser::parseAllowMethods(const std::vector<std::string>& tokens, Loc
 	location.hasAllowMethods = true;
 }
 
-void ConfigParser::parseAutoindex(const std::vector<std::string>& tokens, LocationConfig& location)
+/*void ConfigParser::parseAutoindex(const std::vector<std::string>& tokens, LocationConfig& location)
 {
 	validateSemicolon(tokens);
 	if (tokens.size() != 3)
@@ -30,7 +30,7 @@ void ConfigParser::parseAutoindex(const std::vector<std::string>& tokens, Locati
 		throw std::runtime_error("config error: autoindex must be 'on' or 'off'");
 
 	location.hasAutoindex = true;
-}
+}*/
 
 void ConfigParser::parseUploadStore(const std::vector<std::string>& tokens, LocationConfig& location)
 {

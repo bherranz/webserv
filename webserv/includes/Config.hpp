@@ -66,6 +66,8 @@ struct ServerConfig
 	bool	hasClientMaxBodySize;
 	bool	hasClientTimeout;
 	bool	hasKeepaliveTimeout;
+	bool	autoindex;
+	bool	hasAutoindex;
 
 	ServerConfig();
 };
@@ -81,6 +83,7 @@ class Config
 	std::vector<ServerConfig> &servers();
 	const std::vector<ServerConfig> &servers() const;
 	void print() const;
+	void validate() const;
 
 	private:
 	std::vector<ServerConfig> _servers;

@@ -16,16 +16,15 @@ bool ConfigParser::isBlockEnd(const std::vector<std::string>& tokens) const
     return (tokens.size() == 1 && tokens[0] == "}");
 }
 
-void ConfigParser::parseServerBlock(const std::vector<std::string>& lines, std::size_t& i, std::vector<ServerConfig>& servers)
-	{
+void ConfigParser::parseServerBlock(const std::vector<std::vector<std::string> >& statements, std::size_t& i, std::vector<ServerConfig>& servers)
+{
 	ServerConfig newServer;
 
-	//We start from "server {" or similar an get into the first data block
 	i++;
-
-	while (i < lines.size())
+	
+	while (i < statements.size())
 	{
-		std::vector<std::string> tokens = tokenize(lines[i]);
+		const std::vector<std::string>& tokens = statements[i]; // Ya están separados
 		
 		if (tokens.empty())
 		{
@@ -35,73 +34,50 @@ void ConfigParser::parseServerBlock(const std::vector<std::string>& lines, std::
 
 		if (isBlockEnd(tokens))
 		{
-			// if we find '}' means there is no data left, hence we just close the server
-			// we saved the nwe config sercer and out
 			servers.push_back(newServer);
 			return;
 		}
-		else if (isLocationStart(tokens)) //as location blogs are handled specifically, we call other function
-			parseLocationBlock(lines, i, newServer);
+		else if (isLocationStart(tokens))
+			parseLocationBlock(statements, i, newServer);
 		else
 		{
-			// Ej: "listen 8080;", "server_name localhost;", "root /var/www;"
-			std::cout << "  -> Directiva de Server a parsear: " << tokens[0] << std::endl;
-
-			// Search for the 1º token (ej: "listen", "root") in our map
 			std::map<std::string, ServerDirectiveFn>::iterator it = _serverParsers.find(tokens[0]);
 			
 			if (it != _serverParsers.end())
-				// We pass this token lines to our 'newServer'
 				(this->*(it->second))(tokens, newServer);
 			else
 				throw std::runtime_error("config error: unknown server directive '" + tokens[0] + "'");
 		}
 		i++;
 	}
-	throw std::runtime_error("config error: unclosed server block"); // If we endend without a '}', the config is not closed
+	throw std::runtime_error("config error: unclosed server block");
 }
 
-void ConfigParser::parseLocationBlock(const std::vector<std::string>& lines, std::size_t& i, ServerConfig& server)
+void ConfigParser::parseLocationBlock(const std::vector<std::vector<std::string> >& statements, std::size_t& i, ServerConfig& server)
 {
-	/*
-	** Parsing 'location /path { ... }'.
-	** We pass the ServerConfig by reference to add the path at the end
-	*/
-
     LocationConfig newLocation;
 
-    std::vector<std::string> startTokens = tokenize(lines[i]);
-    if (startTokens.size() >= 2)
-	{
-		// tokens[0] = "location", tokens[1] = "/path", tokens[2] = "{"
-        newLocation.path = startTokens[1]; // We save the route
-        std::cout << "    -> Entrando en Location: " << startTokens[1] << std::endl;
-    }
-    
-    i++; //inside the location block
+    const std::vector<std::string>& startTokens = statements[i];
 
-    while (i < lines.size())
+    if (startTokens.size() >= 2)
+        newLocation.path = startTokens[1];
+    i++;
+
+    while (i < statements.size())
     {
-        std::vector<std::string> tokens = tokenize(lines[i]);
-        
+        const std::vector<std::string>& tokens = statements[i];
         if (tokens.empty())
         {
             i++;
             continue;
         }
-
         if (isBlockEnd(tokens))
         {
-             // if we find '}' means there is no data left, hence we just close the location block
-            // we saved the data for the  location and out
             server.locations.push_back(newLocation);
             return;
         }
         else
         {
-            // Ej: "allowed_methods GET POST;", "autoindex on;"
-            std::cout << "      -> Directiva de Location a parsear: " << tokens[0] << std::endl;
-
             std::map<std::string, LocationDirectiveFn>::iterator it = _locationParsers.find(tokens[0]);
             
             if (it != _locationParsers.end())
@@ -111,7 +87,6 @@ void ConfigParser::parseLocationBlock(const std::vector<std::string>& lines, std
         }
         i++;
     }
-
     throw std::runtime_error("config error: unclosed location block");
 }
 

@@ -7,30 +7,40 @@ void ConfigParser::parseListen(const std::vector<std::string>& tokens, ServerCon
 		throw std::runtime_error("config error: invalid number of arguments in 'listen'");
 
 	std::string listenToken = tokens[1];
-	std::string host = "0.0.0.0";// Default
-	int port = 8080;// Default port
+	std::string host = "0.0.0.0"; // Default
+	int port = 8080; // Default portopen
+	std::string portStr;
 
-	std::size_t colonPos = listenToken.find(':');//we save the ':' location to further separate te host/port pair
+	std::size_t colonPos = listenToken.find(':'); //we save the ':' location to further separate te host/port pair
 
 	if (colonPos != std::string::npos)
 	{
 		// HOST:PORT (ej. 127.0.0.1:8080)
 		host = listenToken.substr(0, colonPos);
-		std::string portStr = listenToken.substr(colonPos + 1);
-		port = std::atoi(portStr.c_str());
+		portStr = listenToken.substr(colonPos + 1);
 	}
 	else
 	{
-		// Only HOST o or only PORT
+		// Only HOST or only PORT
 		// If we find a '.', we assume its a IP. If not, a port.
 		if (listenToken.find('.') != std::string::npos || listenToken == "localhost")
 		{
 			host = listenToken;
-			port = 8080; // !!!!!! If only IP, NGINX uses 80 commonly, but we put 8080 for security!!!!!!!!!!!!!!!!!!!!!!!
+			portStr = "8080"; // !!!!!! If only IP, NGINX uses 80 commonly, but we put 8080 for security!!!!!!!!!!!!!!!!!!!!!!!
 		}
 		else
-			port = std::atoi(listenToken.c_str());
+			portStr = listenToken;
 	}
+
+	char *end = NULL;
+	long portLong = std::strtol(portStr.c_str(), &end, 10);
+
+	//  trash values at the end of the port nbr (ej. 8085a)
+	if (end != NULL && *end != '\0')
+		throw std::runtime_error("config error: port must contain only numbers");
+
+	port = static_cast<int>(portLong);
+
 	if (port <= 0 || port > 65535)
 		throw std::runtime_error("config error: invalid port number");
 
