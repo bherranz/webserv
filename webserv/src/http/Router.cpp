@@ -107,8 +107,10 @@ std::string Router::resolveIndex(const std::string &dirPath, const LocationConfi
 	return "";
 }
 
-void Router::route(const HttpRequest &req, HttpResponse &res, const ServerConfig &server)
+CgiFds Router::route(const HttpRequest &req, HttpResponse &res, const ServerConfig &server)
 {
+	CgiFds noCgi = {-1, -1, -1};
+
 	res.clear();
 
 	const LocationConfig *loc = matchLocation(req._path, server);
@@ -116,9 +118,8 @@ void Router::route(const HttpRequest &req, HttpResponse &res, const ServerConfig
 	if (loc != NULL && loc->hasRedirect && !loc->redirectTarget.empty())
 	{
 		handleRedirect(req, res, *loc);
-		return;
+		return noCgi;
 	}
-
 	if (loc != NULL && !isMethodAllowed(req._method, *loc))
 	{
 		buildErrorResponse(res, 405, server);
@@ -130,31 +131,19 @@ void Router::route(const HttpRequest &req, HttpResponse &res, const ServerConfig
 			allow += loc->allowMethods[i];
 		}
 		res.setHeader("Allow", allow);
-		return;
-	}
-
-	if (loc != NULL && loc->hasClientMaxBodySize && loc->clientMaxBodySize > 0)
-	{
-		if (req._body.size() > loc->clientMaxBodySize)
-		{
-			buildErrorResponse(res, 413, server);
-			return;
-		}
+		return noCgi;
 	}
 	else if (server.hasClientMaxBodySize && server.clientMaxBodySize > 0)
 	{
 		if (req._body.size() > server.clientMaxBodySize)
 		{
 			buildErrorResponse(res, 413, server);
-			return;
+			return noCgi;
 		}
 	}
-
+	// If it is a CGI request, handle it and return the fds
 	if (loc != NULL && isCgiExtension(req._path, *loc))
-	{
-		handleCgi(req, res, *loc, server);
-		return;
-	}
+		return handleCgi(req, res, *loc, server);
 
 	if (req._method == "GET")
 		handleGet(req, res, loc ? *loc : LocationConfig(), server);
@@ -164,6 +153,8 @@ void Router::route(const HttpRequest &req, HttpResponse &res, const ServerConfig
 		handleDelete(req, res, loc ? *loc : LocationConfig(), server);
 	else
 		buildErrorResponse(res, 501, server);
+
+	return noCgi;
 }
 
 void Router::handleGet(const HttpRequest &req, HttpResponse &res, const LocationConfig &loc, const ServerConfig &server)
@@ -397,10 +388,11 @@ void Router::handleRedirect(const HttpRequest &req, HttpResponse &res, const Loc
 	res.setContentLength(0);
 }
 
-void Router::handleCgi(const HttpRequest &req, HttpResponse &res, const LocationConfig &loc, const ServerConfig &server)
+CgiFds Router::handleCgi(const HttpRequest &req, HttpResponse &res, const LocationConfig &loc, const ServerConfig &server)
 {
 	CGIHandler handler(req, loc, server);
-	handler.execute(res);
+	// Start the CGI process and get the file descriptors
+	return handler.start(res); 
 }
 
 void Router::handleAutoindex(const std::string &dirPath, HttpResponse &res)

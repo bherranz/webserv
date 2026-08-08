@@ -11,7 +11,7 @@ class Router
 	Router();
 	~Router();
 
-	void route(const HttpRequest &req, HttpResponse &res, const ServerConfig &server);
+	CgiFds route(const HttpRequest &req, HttpResponse &res, const ServerConfig &server);
 
 	private:
 	const LocationConfig *matchLocation(const std::string &path, const ServerConfig &server) const;
@@ -23,7 +23,7 @@ class Router
 	void handlePost(const HttpRequest &req, HttpResponse &res, const LocationConfig &loc, const ServerConfig &server);
 	void handleDelete(const HttpRequest &req, HttpResponse &res, const LocationConfig &loc, const ServerConfig &server);
 	void handleRedirect(const HttpRequest &req, HttpResponse &res, const LocationConfig &loc);
-	void handleCgi(const HttpRequest &req, HttpResponse &res, const LocationConfig &loc, const ServerConfig &server);
+	CgiFds handleCgi(const HttpRequest &req, HttpResponse &res, const LocationConfig &loc, const ServerConfig &server);
 	void handleAutoindex(const std::string &dirPath, HttpResponse &res);
 
 	void buildErrorResponse(HttpResponse &res, int code, const ServerConfig &server);

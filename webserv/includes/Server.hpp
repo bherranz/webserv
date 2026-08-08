@@ -16,10 +16,21 @@ public:
 	~Server();
 
 	void run();
-
-private:
+	
+	private:
 	Server(const Server &);
 	Server &operator=(const Server &);
+	
+	struct CgiTask {
+		pid_t pid;
+		int stdoutFd;
+		int stdinFd;
+		int clientFd;
+		std::string outputData;
+		std::string inputData;
+		std::size_t writeOffset;
+		std::time_t startTime;
+	};
 
 	void initListenSockets();
 	void openListenSocket(const ListenConfig &listenConfig, std::size_t serverIndex);
@@ -33,8 +44,16 @@ private:
 	bool isListenFd(int fd) const;
 
 	void checkTimeouts();
+	void checkCgiTimeouts();
+	void checkClientTimeouts();
 	bool shouldKeepAlive(const HttpRequest &req) const;
 	const ServerConfig &getServerForClient(int fd) const;
+	bool handleCgiEvent(struct pollfd &p);
+	void handleCgiWrite(CgiTask &task);
+	void handleCgiRead(std::map<int, CgiTask>::iterator &cgiIt);
+
+
+	std::map<int, CgiTask> _activeCgis;
 
 	Config _config;
 	std::vector<int> _listenFds;

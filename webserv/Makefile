@@ -26,7 +26,7 @@ SRCS =  src/main.cpp \
 		src/http/HttpRequest.cpp \
 		src/http/HttpResponse.cpp \
 		src/http/Router.cpp \
-		src/cgi/CgiHandler.cpp \
+		src/cgi/CGIHandler.cpp \
 		src/utils/Utils.cpp
 
 # Define Colors
