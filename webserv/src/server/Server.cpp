@@ -218,29 +218,43 @@ void Server::handleClientRead(int fd)
 
 		HttpRequest &req = _pendingRequests[fd];
 		bool headersJustCompleted = false;
+		std::string &buffer = it->second.inBuffer();
 
 		if (!req.headersComplete())
 		{
-			std::size_t headerEnd = it->second.inBuffer().find("\r\n\r\n");
+			std::size_t headerEnd = buffer.find("\r\n\r\n");
 			if (headerEnd != std::string::npos)
 			{
-				if (!req.parse(it->second.inBuffer()))
+				if (!req.parse(buffer))
 				{
 					HttpResponse response;
 					response.setError(400);
 					it->second.outBuffer() = response.toString();
-					it->second.inBuffer().clear();
+					buffer.clear();
 					_pendingRequests.erase(fd);
 					return;
 				}
 
-				std::size_t bodyStart = headerEnd + 4;
-				if (bodyStart < it->second.inBuffer().size())
+				std::size_t headerBytes = headerEnd + 4;
+				std::size_t bodyBytesConsumed = 0;
+				std::map<std::string, std::string>::const_iterator contentLengthIt = req._headers.find("content-length");
+				if (contentLengthIt != req._headers.end())
 				{
-					std::string bodyData = it->second.inBuffer().substr(bodyStart);
-					req.appendBodyData(bodyData);
+					char *end = NULL;
+					long bodyLen = std::strtol(contentLengthIt->second.c_str(), &end, 10);
+					if (end != NULL && *end == '\0' && bodyLen >= 0)
+					{
+						std::size_t bodyAvailable = buffer.size() - headerBytes;
+						std::size_t expectedBody = static_cast<std::size_t>(bodyLen);
+						std::size_t bodyToConsume = bodyAvailable < expectedBody ? bodyAvailable : expectedBody;
+						if (bodyToConsume > 0)
+						{
+							req.appendBodyData(buffer.substr(headerBytes, bodyToConsume));
+							bodyBytesConsumed = bodyToConsume;
+						}
+					}
 				}
-				it->second.inBuffer().clear();
+				buffer.erase(0, headerBytes + bodyBytesConsumed);
 				headersJustCompleted = true;
 			}
 			else
@@ -261,8 +275,23 @@ void Server::handleClientRead(int fd)
 		{
 			if (!headersJustCompleted)
 			{
-				req.appendBodyData(std::string(buf, n));
-				it->second.inBuffer().clear();
+				std::map<std::string, std::string>::const_iterator contentLengthIt = req._headers.find("content-length");
+				if (contentLengthIt != req._headers.end())
+				{
+					char *end = NULL;
+					long bodyLen = std::strtol(contentLengthIt->second.c_str(), &end, 10);
+					if (end != NULL && *end == '\0' && bodyLen >= 0)
+					{
+						std::size_t bodyAvailable = buffer.size();
+						std::size_t expectedBody = static_cast<std::size_t>(bodyLen);
+						std::size_t bodyToConsume = bodyAvailable < expectedBody ? bodyAvailable : expectedBody;
+						if (bodyToConsume > 0)
+						{
+							req.appendBodyData(buffer.substr(0, bodyToConsume));
+							buffer.erase(0, bodyToConsume);
+						}
+					}
+				}
 			}
 		}
 

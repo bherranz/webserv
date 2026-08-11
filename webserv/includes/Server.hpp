@@ -5,6 +5,20 @@
 #include <vector>
 #include <string>
 #include <poll.h>
+#include <iostream>
+#include <cstring>
+#include <cerrno>
+#include <cctype>
+#include <sstream>
+#include <map>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <csignal>
 
 #include "Config.hpp"
 #include "Client.hpp"
