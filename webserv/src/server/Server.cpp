@@ -39,14 +39,12 @@ extern "C" void handleSigint(int) {
 	g_stopRequested = 1;
 }
 
-namespace {
-	bool shouldUsePassive(const std::string &host) {
-		return host.empty() || host == "0.0.0.0" || host == "::";
-	}
+static bool shouldUsePassive(const std::string &host) {
+	return host.empty() || host == "0.0.0.0" || host == "::";
+}
 
-	bool isWildcardHost(const std::string &host) {
-		return host.empty() || host == "0.0.0.0";
-	}
+static bool isWildcardHost(const std::string &host) {
+	return host.empty() || host == "0.0.0.0";
 }
 
 Server::Server(const Config &config) : _config(config) { initListenSockets(); }
@@ -90,11 +88,9 @@ void Server::openListenSocket(const ListenConfig &listenConfig, std::size_t serv
 	hints.ai_socktype = SOCK_STREAM;
 	hints.ai_flags = shouldUsePassive(listenConfig.host) ? AI_PASSIVE : 0;
 
-	std::ostringstream portText;
-	portText << listenConfig.port;
 	struct addrinfo *result = NULL;
 	const char *host = shouldUsePassive(listenConfig.host) ? NULL : listenConfig.host.c_str();
-	int err = ::getaddrinfo(host, portText.str().c_str(), &hints, &result);
+	int err = ::getaddrinfo(host, Utils::toString(listenConfig.port).c_str(), &hints, &result);
 	if (err != 0) {
 		std::string message = "getaddrinfo() failed: ";
 		message += ::gai_strerror(err);
@@ -231,11 +227,7 @@ void Server::handleClientRead(int fd)
 				if (!req.parse(it->second.inBuffer()))
 				{
 					HttpResponse response;
-					response.setStatus(400, "Bad Request");
-					response.setContentType("text/html");
-					std::string body = "<html><body><h1>400 Bad Request</h1></body></html>";
-					response.setBody(body);
-					response.setContentLength(body.size());
+					response.setError(400);
 					it->second.outBuffer() = response.toString();
 					it->second.inBuffer().clear();
 					_pendingRequests.erase(fd);
@@ -256,11 +248,7 @@ void Server::handleClientRead(int fd)
 			if (it->second.isTimedOut(getServerForClient(fd).clientTimeout))
 			{
 				HttpResponse response;
-				response.setStatus(408, "Request Timeout");
-				std::string body = "<html><body><h1>408 Request Timeout</h1></body></html>";
-				response.setBody(body);
-				response.setContentType("text/html");
-				response.setContentLength(body.size());
+				response.setError(408);
 				it->second.outBuffer() = response.toString();
 				_pendingRequests.erase(fd);
 				return;
@@ -339,9 +327,6 @@ void Server::handleClientRead(int fd)
 				return; // Freeze the request handling until CGI is done
 			}
 			// if it is not a CGI request, we continue to send the static response
-			response.setHeader("Server", "webserv/1.0");
-			response.setHeader("Date", Utils::formatDate());
-
 			if (keepAlive)
 				response.setHeader("Connection", "keep-alive");
 			else
@@ -468,13 +453,7 @@ void Server::checkCgiTimeouts()
 			if (clientIt != _clients.end())
 			{
 				HttpResponse response;
-				response.setStatus(504, "Gateway Timeout");
-				response.setContentType("text/html");
-				std::string body = "<html><body><h1>504 Gateway Timeout</h1><p>CGI process took too long</p></body></html>";
-				response.setBody(body);
-				response.setContentLength(body.size());
-				response.setHeader("Server", "webserv/1.0");
-				response.setHeader("Date", Utils::formatDate());
+				response.setError(504, "CGI process took too long");
 				response.setHeader("Connection", "close");
 				
 				clientIt->second.setKeepAlive(false);
@@ -509,13 +488,7 @@ void Server::checkClientTimeouts()
 			if (it->second.outBuffer().empty() && _pendingRequests.find(fd) != _pendingRequests.end())
 			{
 				HttpResponse response;
-				response.setStatus(408, "Request Timeout");
-				std::string body = "<html><body><h1>408 Request Timeout</h1></body></html>";
-				response.setBody(body);
-				response.setContentType("text/html");
-				response.setContentLength(body.size());
-				response.setHeader("Server", "webserv/1.0");
-				response.setHeader("Date", Utils::formatDate());
+				response.setError(408);
 				response.setHeader("Connection", "close");
 				it->second.setKeepAlive(false);
 				it->second.outBuffer() = response.toString();
@@ -653,23 +626,12 @@ void Server::handleCgiRead(std::map<int, CgiTask>::iterator &cgiIt)
 	bool hasError = (WIFSIGNALED(status) || (WIFEXITED(status) && WEXITSTATUS(status) != 0));
 	if (hasError && cgiIt->second.outputData.empty())
 	{
-		response.setStatus(500, "Internal Server Error");
-		response.setContentType("text/html");
-		std::string body = "<html><body><h1>500 Internal Server Error</h1><p>CGI script exited with error</p></body></html>";
-		response.setBody(body);
-		response.setContentLength(body.size());
+		response.setError(500, "CGI script exited with error");
 	}
 	else if (!CGIHandler::finalize(cgiIt->second.outputData, response))
 	{
-		response.setStatus(500, "Internal Server Error");
-		response.setContentType("text/html");
-		std::string body = "<html><body><h1>500 Internal Server Error</h1><p>CGI output malformed</p></body></html>";
-		response.setBody(body);
-		response.setContentLength(body.size());
+		response.setError(500, "CGI output malformed");
 	}
-
-	response.setHeader("Server", "webserv/1.0");
-	response.setHeader("Date", Utils::formatDate());
 
 	// Search for the client associated with this CGI task and send the response
 	int clientFd = cgiIt->second.clientFd;

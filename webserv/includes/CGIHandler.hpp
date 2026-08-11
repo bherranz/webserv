@@ -25,6 +25,7 @@ class CGIHandler {
 		CgiFds start(HttpResponse &res);
 		// when the server reads the output, it calls this function to finalize the response
 		static bool finalize(const std::string &rawOutput, HttpResponse &res);
+		static std::string getInterpreter(const std::string &path, const LocationConfig &loc);
 
 	private:
 		std::string resolveScriptPath() const;

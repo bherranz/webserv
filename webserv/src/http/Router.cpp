@@ -56,27 +56,14 @@ bool Router::isMethodAllowed(const std::string &method, const LocationConfig &lo
 
 std::string Router::resolvePath(const std::string &uriPath, const LocationConfig &loc, const ServerConfig &server) const
 {
-	std::string root;
+	std::string root = ".";
 	if (loc.hasRoot && !loc.root.empty())
 		root = loc.root;
 	else if (server.hasRoot && !server.root.empty())
 		root = server.root;
-	else
-		root = ".";
 
-	std::string cleanPath = Utils::stripQueryString(uriPath);
-	cleanPath = Utils::urlDecode(cleanPath);
-
-	if (!cleanPath.empty() && cleanPath[0] == '/')
-		cleanPath = cleanPath.substr(1);
-
-	std::string fullPath;
-	if (!root.empty() && root[root.size() - 1] == '/')
-		fullPath = root + cleanPath;
-	else
-		fullPath = root + "/" + cleanPath;
-
-	return fullPath;
+	std::string cleanPath = Utils::urlDecode(Utils::stripQueryString(uriPath));
+	return Utils::joinPath(root, cleanPath);
 }
 	
 std::string Router::resolveIndex(const std::string &dirPath, const LocationConfig &loc, const ServerConfig &server) const
@@ -95,10 +82,7 @@ std::string Router::resolveIndex(const std::string &dirPath, const LocationConfi
 
 	for (std::size_t i = 0; i < indexList->size(); ++i)
 	{
-		std::string indexPath = dirPath;
-		if (!dirPath.empty() && dirPath[dirPath.size() - 1] != '/')
-			indexPath += "/";
-		indexPath += (*indexList)[i];
+		std::string indexPath = Utils::joinPath(dirPath, (*indexList)[i]);
 
 		if (Utils::fileExists(indexPath))
 			return indexPath;
@@ -240,15 +224,13 @@ void Router::handlePost(const HttpRequest &req, HttpResponse &res, const Locatio
 			{
 				if (!content.empty())
 				{
-					std::string root;
+					std::string root = ".";
 					if (loc.hasUploadStore && !loc.uploadStore.empty())
 						root = loc.uploadStore;
 					else if (loc.hasRoot && !loc.root.empty())
 						root = loc.root;
 					else if (server.hasRoot && !server.root.empty())
 						root = server.root;
-					else
-						root = ".";
 
 					// Sanitize filename: remove path separators
 					std::string safeName = filename;
@@ -259,11 +241,7 @@ void Router::handlePost(const HttpRequest &req, HttpResponse &res, const Locatio
 					if (sep != std::string::npos)
 						safeName = safeName.substr(sep + 1);
 
-					std::string fsPath;
-					if (!root.empty() && root[root.size() - 1] == '/')
-						fsPath = root + safeName;
-					else
-						fsPath = root + "/" + safeName;
+					std::string fsPath = Utils::joinPath(root, safeName);
 
 					std::ofstream file(fsPath.c_str(), std::ios::binary);
 					if (file.is_open())
@@ -281,18 +259,15 @@ void Router::handlePost(const HttpRequest &req, HttpResponse &res, const Locatio
 		// Fall through to normal POST on parse failure
 	}
 
-	std::string root;
+	std::string root = ".";
 	if (loc.hasUploadStore && !loc.uploadStore.empty())
 		root = loc.uploadStore;
 	else if (loc.hasRoot && !loc.root.empty())
 		root = loc.root;
 	else if (server.hasRoot && !server.root.empty())
 		root = server.root;
-	else
-		root = ".";
 
-	std::string cleanPath = Utils::stripQueryString(req._path);
-	cleanPath = Utils::urlDecode(cleanPath);
+	std::string cleanPath = Utils::urlDecode(Utils::stripQueryString(req._path));
 
 	// Strip the location prefix from the URI so uploaded files land in upload_store
 	// without duplicating the location path segment.
@@ -302,14 +277,7 @@ void Router::handlePost(const HttpRequest &req, HttpResponse &res, const Locatio
 			cleanPath = cleanPath.substr(loc.path.size());
 	}
 
-	if (!cleanPath.empty() && cleanPath[0] == '/')
-		cleanPath = cleanPath.substr(1);
-
-	std::string fsPath;
-	if (!root.empty() && root[root.size() - 1] == '/')
-		fsPath = root + cleanPath;
-	else
-		fsPath = root + "/" + cleanPath;
+	std::string fsPath = Utils::joinPath(root, cleanPath);
 
 	if (Utils::isDirectory(fsPath))
 	{
@@ -400,9 +368,7 @@ void Router::handleAutoindex(const std::string &dirPath, HttpResponse &res)
 	DIR *dir = opendir(dirPath.c_str());
 	if (dir == NULL)
 	{
-		res.setStatus(403, "Forbidden");
-		res.setBody("<html><body><h1>403 Forbidden</h1></body></html>");
-		res.setContentType("text/html");
+		res.setError(403);
 		return;
 	}
 
@@ -442,17 +408,8 @@ void Router::buildErrorResponse(HttpResponse &res, int code, const ServerConfig 
 	std::map<int, std::string>::const_iterator it = server.errorPages.find(code);
 	if (it != server.errorPages.end())
 	{
-		std::string errorPath = it->second;
-		if (!errorPath.empty() && errorPath[0] != '/')
-			errorPath = "/" + errorPath;
-
-		std::string root;
-		if (server.hasRoot && !server.root.empty())
-			root = server.root;
-		else
-			root = ".";
-
-		std::string fullPath = root + errorPath;
+		std::string root = (server.hasRoot && !server.root.empty()) ? server.root : ".";
+		std::string fullPath = Utils::joinPath(root, it->second);
 		std::string content = Utils::readFile(fullPath);
 		if (!content.empty())
 		{
@@ -464,17 +421,7 @@ void Router::buildErrorResponse(HttpResponse &res, int code, const ServerConfig 
 		}
 	}
 
-	std::ostringstream ss;
-	ss << code;
-	std::string codeStr = ss.str();
-	std::string body = "<html><head><title>" + codeStr + " " + HttpResponse::reasonPhrase(code) + "</title></head><body>";
-	body += "<h1>" + codeStr + " " + HttpResponse::reasonPhrase(code) + "</h1>";
-	body += "</body></html>";
-
-	res.setStatus(code, HttpResponse::reasonPhrase(code));
-	res.setContentType("text/html");
-	res.setBody(body);
-	res.setContentLength(body.size());
+	res.setError(code);
 }
 
 bool Router::parseMultipart(const std::string &body, const std::string &boundary,

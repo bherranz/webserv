@@ -18,93 +18,48 @@ CGIHandler::CGIHandler(const HttpRequest &req, const LocationConfig &loc, const 
 CGIHandler::~CGIHandler() {}
 
 std::string CGIHandler::resolveScriptPath() const {
-	std::string root;
-	std::string uri = _req._path;
-	std::size_t qmark = uri.find('?');
-	if (qmark != std::string::npos)
-		uri = uri.substr(0, qmark);
-	
-	uri = Utils::urlDecode(uri);
-
-	if (_loc.hasRoot && !_loc.root.empty()) {
+	std::string root = ".";
+	if (_loc.hasRoot && !_loc.root.empty())
 		root = _loc.root;
-		if (!root.empty() && root[root.size() - 1] == '/')
-			root.erase(root.size() - 1);
-	} else if (_server.hasRoot && !_server.root.empty()) {
+	else if (_server.hasRoot && !_server.root.empty())
 		root = _server.root;
-		if (!root.empty() && root[root.size() - 1] == '/')
-			root.erase(root.size() - 1);
-	} else {
-		root = ".";
-	}
 
-	if (!uri.empty() && uri[0] == '/')
-		uri = uri.substr(1);
-
-	if (uri.empty())
-		return root;
-	return root + "/" + uri;
+	std::string uri = Utils::urlDecode(Utils::stripQueryString(_req._path));
+	return Utils::joinPath(root, uri);
 }
 
 // Determines the interpreter to use based on the CGI configuration and the script extension
-std::string CGIHandler::getInterpreter() const {
-	if (_loc.cgiExt.empty() || _loc.cgiPath.empty())
-		return ""; // no CGI configuration, return empty string
-	
-	// clean uri
-	std::string uri = _req._path;
-	std::size_t qmark = uri.find('?');
-	if (qmark != std::string::npos)
-		uri = uri.substr(0, qmark);
-	
-	uri = Utils::urlDecode(uri);
+std::string CGIHandler::getInterpreter(const std::string &path, const LocationConfig &loc) {
+	if (loc.cgiExt.empty() || loc.cgiPath.empty())
+		return "";
 
-	std::size_t dot = uri.rfind('.');
-	if (dot == std::string::npos)
-		return ""; // no extension found
-
-	std::string ext = uri.substr(dot);
-
-	for (std::size_t i = 0; i < _loc.cgiExt.size(); ++i) {
-		std::string configuredExt = _loc.cgiExt[i];
-		if (!configuredExt.empty() && configuredExt[0] != '.')
-			configuredExt = "." + configuredExt;
-		if (configuredExt == ext) {
-			if (i < _loc.cgiPath.size())
-				return _loc.cgiPath[i];
-			else if (!_loc.cgiPath.empty())
-				return _loc.cgiPath[0];
-		}
-	}
-
-	return ""; // no matching extension found
-}
-
-bool isCgiExtension(const std::string &path, const LocationConfig &loc) {
-	if (loc.cgiExt.empty())
-		return false; // no CGI configuration, return false
-	
-	// clean path
-	std::string cleanPath = path;
-	std::size_t qmark = cleanPath.find('?');
-	if (qmark != std::string::npos)
-		cleanPath = cleanPath.substr(0, qmark);
-	
-	cleanPath = Utils::urlDecode(cleanPath);
-
+	std::string cleanPath = Utils::urlDecode(Utils::stripQueryString(path));
 	std::size_t dot = cleanPath.rfind('.');
 	if (dot == std::string::npos)
-		return false; // no extension found
-	
+		return "";
+
 	std::string ext = cleanPath.substr(dot);
 	for (std::size_t i = 0; i < loc.cgiExt.size(); ++i) {
 		std::string configuredExt = loc.cgiExt[i];
 		if (!configuredExt.empty() && configuredExt[0] != '.')
 			configuredExt = "." + configuredExt;
-		if (configuredExt == ext)
-			return true; // matching extension found
+		if (configuredExt == ext) {
+			if (i < loc.cgiPath.size())
+				return loc.cgiPath[i];
+			else if (!loc.cgiPath.empty())
+				return loc.cgiPath[0];
+		}
 	}
-	return false; // no matching extension found
+
+	return "";
+}
+
+std::string CGIHandler::getInterpreter() const {
+	return getInterpreter(_req._path, _loc);
+}
+
+bool isCgiExtension(const std::string &path, const LocationConfig &loc) {
+	return !CGIHandler::getInterpreter(path, loc).empty();
 }
 
 void CGIHandler::freeEnv(char **env) const
@@ -129,9 +84,7 @@ char **CGIHandler::buildEnv() const
 	env.push_back("SERVER_NAME=" + serverName);
 
 	if (!_server.listens.empty()) {
-		std::ostringstream portSs;
-		portSs << _server.listens[0].port;
-		env.push_back("SERVER_PORT=" + portSs.str());
+		env.push_back("SERVER_PORT=" + Utils::toString(_server.listens[0].port));
 	} else {
 		env.push_back("SERVER_PORT=8080");
 	}
@@ -169,9 +122,7 @@ char **CGIHandler::buildEnv() const
 	if (cl != _req._headers.end())
 		env.push_back("CONTENT_LENGTH=" + cl->second);
 	else if (!_req._body.empty()) {
-		std::ostringstream lenSs;
-		lenSs << _req._body.size();
-		env.push_back("CONTENT_LENGTH=" + lenSs.str());
+		env.push_back("CONTENT_LENGTH=" + Utils::toString(_req._body.size()));
 	} else {
 		env.push_back("CONTENT_LENGTH=");
 	}
@@ -208,32 +159,20 @@ CgiFds CGIHandler::start(HttpResponse & res)
 	std::string interpreter = getInterpreter();
 	// Check if the script exists and if the interpreter is valid
 	if (interpreter.empty() || !Utils::fileExists(scriptPath)) {
-		res.setStatus(404, "Not Found");
-		std::string body = "<html><body><h1>404 Not Found</h1><p>CGI script not found</p></body></html>";
-		res.setBody(body);
-		res.setContentType("text/html");
-		res.setContentLength(body.size());
+		res.setError(404, "CGI script not found");
 		return (fds);
 	}
 	// Create pipes for stdin and stdout
 	int stdinPipe[2];
 	int stdoutPipe[2];
 	if (pipe(stdinPipe) < 0) {
-		res.setStatus(500, "Internal Server Error");
-		std::string body = "<html><body><h1>500 Internal Server Error</h1><p>pipe() failed</p></body></html>";
-		res.setBody(body);
-		res.setContentType("text/html");
-		res.setContentLength(body.size());
+		res.setError(500, "pipe() failed");
 		return (fds);
 	}
 	if (pipe(stdoutPipe) < 0) {
 		close(stdinPipe[0]);
 		close(stdinPipe[1]);
-		res.setStatus(500, "Internal Server Error");
-		std::string body = "<html><body><h1>500 Internal Server Error</h1><p>pipe() failed</p></body></html>";
-		res.setBody(body);
-		res.setContentType("text/html");
-		res.setContentLength(body.size());
+		res.setError(500, "pipe() failed");
 		return (fds);
 	}
 
@@ -245,11 +184,7 @@ CgiFds CGIHandler::start(HttpResponse & res)
 		close(stdoutPipe[0]);
 		close(stdoutPipe[1]);
 		freeEnv(env);
-		res.setStatus(500, "Internal Server Error");
-		std::string body = "<html><body><h1>500 Internal Server Error</h1><p>fork() failed</p></body></html>";
-		res.setBody(body);
-		res.setContentType("text/html");
-		res.setContentLength(body.size());
+		res.setError(500, "fork() failed");
 		return (fds);
 	}
 	if (pid == 0) {
@@ -315,9 +250,7 @@ void CGIHandler::executeChild(int stdinPipe[2], int stdoutPipe[2], const std::st
 bool CGIHandler::finalize(const std::string &raw, HttpResponse &res)
 {
 	if (raw.empty()) {
-		res.setStatus(500, "Internal Server Error");
-		res.setBody("<html><body><h1>500 Internal Server Error</h1><p>CGI script returned no output</p></body></html>");
-		res.setContentType("text/html");
+		res.setError(500, "CGI script returned no output");
 		return false;
 	}
 
