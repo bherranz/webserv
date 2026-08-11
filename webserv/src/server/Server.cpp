@@ -191,12 +191,8 @@ void Server::rebuildPollFds() {
 void Server::acceptClients(int listenFd) {
 	while (true) {
 		int clientFd = ::accept(listenFd, NULL, NULL);
-		if (clientFd < 0) {
-			if (errno == EAGAIN || errno == EWOULDBLOCK)
-				return;
-			std::cerr << "accept() failed: " << std::strerror(errno) << std::endl;
+		if (clientFd < 0)
 			return;
-		}
 		try {
 			setNonBlocking(clientFd);
 		} catch (...) {
@@ -291,7 +287,7 @@ void Server::handleClientRead(int fd)
 			if (si != _clientServers.end())
 				serverIdx = si->second;
 
-			std::map<std::string, std::string>::const_iterator hostIt = req._headers.find("Host");
+			std::map<std::string, std::string>::const_iterator hostIt = req._headers.find("host");
 			if (hostIt != req._headers.end())
 			{
 				std::string hostHeader = hostIt->second;
@@ -437,7 +433,7 @@ const ServerConfig &Server::getServerForClient(int fd) const
 
 bool Server::shouldKeepAlive(const HttpRequest &req) const
 {
-	std::map<std::string, std::string>::const_iterator it = req._headers.find("Connection");
+	std::map<std::string, std::string>::const_iterator it = req._headers.find("connection");
 	if (it != req._headers.end())
 	{
 		std::string val = it->second;
@@ -477,7 +473,11 @@ void Server::checkCgiTimeouts()
 				std::string body = "<html><body><h1>504 Gateway Timeout</h1><p>CGI process took too long</p></body></html>";
 				response.setBody(body);
 				response.setContentLength(body.size());
+				response.setHeader("Server", "webserv/1.0");
+				response.setHeader("Date", Utils::formatDate());
+				response.setHeader("Connection", "close");
 				
+				clientIt->second.setKeepAlive(false);
 				clientIt->second.outBuffer() = response.toString();
 				clientIt->second.updateActivity();
 			}
@@ -514,6 +514,10 @@ void Server::checkClientTimeouts()
 				response.setBody(body);
 				response.setContentType("text/html");
 				response.setContentLength(body.size());
+				response.setHeader("Server", "webserv/1.0");
+				response.setHeader("Date", Utils::formatDate());
+				response.setHeader("Connection", "close");
+				it->second.setKeepAlive(false);
 				it->second.outBuffer() = response.toString();
 				_pendingRequests.erase(fd);
 			}
@@ -556,14 +560,16 @@ void Server::run() {
 			if (handleCgiEvent(p))
 				continue;
 
-			if (p.revents & (POLLHUP | POLLERR | POLLNVAL)) {
-				closeClient(p.fd);
-				continue;
+			if (_clients.find(p.fd) != _clients.end()) {
+				if (p.revents & (POLLHUP | POLLERR | POLLNVAL)) {
+					closeClient(p.fd);
+					continue;
+				}
+				if (p.revents & POLLIN)
+					handleClientRead(p.fd);
+				if (p.revents & POLLOUT)
+					handleClientWrite(p.fd);
 			}
-			if (p.revents & POLLIN)
-				handleClientRead(p.fd);
-			if (p.revents & POLLOUT)
-				handleClientWrite(p.fd);
 		}
 		checkTimeouts();
 	}
@@ -603,8 +609,6 @@ void Server::handleCgiWrite(CgiTask &task)
 							task.inputData.size() - task.writeOffset);
 		if (n > 0) 
 			task.writeOffset += n;
-		else if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
-			return;
 		else
 		{
 			::close(task.stdinFd);
@@ -616,8 +620,11 @@ void Server::handleCgiWrite(CgiTask &task)
 	// If all data has been written, close the stdin pipe so child receives EOF
 	if (task.writeOffset >= task.inputData.size())
 	{
-		::close(task.stdinFd);
-		task.stdinFd = -1;
+		if (task.stdinFd >= 0)
+		{
+			::close(task.stdinFd);
+			task.stdinFd = -1;
+		}
 	}
 }
 
@@ -629,54 +636,59 @@ void Server::handleCgiRead(std::map<int, CgiTask>::iterator &cgiIt)
 	if (n > 0)
 	{
 		cgiIt->second.outputData.append(buf, n);
-	}
-	else if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
-	{
 		return;
 	}
-	else
+	
+	// EOF or error on CGI stdout
+	int status = 0;
+	pid_t ret = waitpid(cgiIt->second.pid, &status, WNOHANG);
+	if (ret == 0)
 	{
-		// CGI process has finished or an error occurred, finalize the response
-		int status = 0;
-		waitpid(cgiIt->second.pid, &status, 0);
-
-		// Parse the CGI output and build the final HttpResponse
-		HttpResponse response;
-		if (WIFEXITED(status) && WEXITSTATUS(status) != 0 && cgiIt->second.outputData.empty())
-		{
-			response.setStatus(500, "Internal Server Error");
-			response.setContentType("text/html");
-			std::string body = "<html><body><h1>500 Internal Server Error</h1><p>CGI script exited with error</p></body></html>";
-			response.setBody(body);
-			response.setContentLength(body.size());
-		}
-		else
-		{
-			CGIHandler::finalize(cgiIt->second.outputData, response);
-		}
-
-		response.setHeader("Server", "webserv/1.0");
-		response.setHeader("Date", Utils::formatDate());
-
-		// Search for the client associated with this CGI task and send the response
-		int clientFd = cgiIt->second.clientFd;
-		std::map<int, Client>::iterator clientIt = _clients.find(clientFd);
-		if (clientIt != _clients.end())
-		{
-			bool keepAlive = clientIt->second.keepAlive();
-			if (keepAlive)
-				response.setHeader("Connection", "keep-alive");
-			else
-				response.setHeader("Connection", "close");
-
-			clientIt->second.outBuffer() = response.toString();
-			clientIt->second.updateActivity();
-		}
-		
-		// Clean up the CGI task
-		if (cgiIt->second.stdinFd >= 0) 
-			::close(cgiIt->second.stdinFd);
-		::close(cgiIt->second.stdoutFd);
-		_activeCgis.erase(cgiIt);
+		kill(cgiIt->second.pid, SIGKILL);
+		waitpid(cgiIt->second.pid, &status, WNOHANG);
 	}
+
+	// Parse the CGI output and build the final HttpResponse
+	HttpResponse response;
+	bool hasError = (WIFSIGNALED(status) || (WIFEXITED(status) && WEXITSTATUS(status) != 0));
+	if (hasError && cgiIt->second.outputData.empty())
+	{
+		response.setStatus(500, "Internal Server Error");
+		response.setContentType("text/html");
+		std::string body = "<html><body><h1>500 Internal Server Error</h1><p>CGI script exited with error</p></body></html>";
+		response.setBody(body);
+		response.setContentLength(body.size());
+	}
+	else if (!CGIHandler::finalize(cgiIt->second.outputData, response))
+	{
+		response.setStatus(500, "Internal Server Error");
+		response.setContentType("text/html");
+		std::string body = "<html><body><h1>500 Internal Server Error</h1><p>CGI output malformed</p></body></html>";
+		response.setBody(body);
+		response.setContentLength(body.size());
+	}
+
+	response.setHeader("Server", "webserv/1.0");
+	response.setHeader("Date", Utils::formatDate());
+
+	// Search for the client associated with this CGI task and send the response
+	int clientFd = cgiIt->second.clientFd;
+	std::map<int, Client>::iterator clientIt = _clients.find(clientFd);
+	if (clientIt != _clients.end())
+	{
+		bool keepAlive = clientIt->second.keepAlive();
+		if (keepAlive)
+			response.setHeader("Connection", "keep-alive");
+		else
+			response.setHeader("Connection", "close");
+
+		clientIt->second.outBuffer() = response.toString();
+		clientIt->second.updateActivity();
+	}
+	
+	// Clean up the CGI task
+	if (cgiIt->second.stdinFd >= 0) 
+		::close(cgiIt->second.stdinFd);
+	::close(cgiIt->second.stdoutFd);
+	_activeCgis.erase(cgiIt);
 }

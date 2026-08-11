@@ -224,7 +224,7 @@ void Router::handleGet(const HttpRequest &req, HttpResponse &res, const Location
 void Router::handlePost(const HttpRequest &req, HttpResponse &res, const LocationConfig &loc, const ServerConfig &server)
 {
 	// Check for multipart/form-data upload
-	std::map<std::string, std::string>::const_iterator ct = req._headers.find("Content-Type");
+	std::map<std::string, std::string>::const_iterator ct = req._headers.find("content-type");
 	if (ct != req._headers.end() && ct->second.find("multipart/form-data") != std::string::npos)
 	{
 		std::string boundary;

@@ -19,16 +19,6 @@ CGIHandler::~CGIHandler() {}
 
 std::string CGIHandler::resolveScriptPath() const {
 	std::string root;
-
-	// search for the root location
-	if (_loc.hasRoot && !_loc.root.empty())
-		root = _loc.root;
-	else if (_server.hasRoot && !_server.root.empty())
-		root = _server.root;
-	else
-		root = "."; // if the user didn't specify a root, we use the current directory
-	
-	// clean URI path
 	std::string uri = _req._path;
 	std::size_t qmark = uri.find('?');
 	if (qmark != std::string::npos)
@@ -36,11 +26,23 @@ std::string CGIHandler::resolveScriptPath() const {
 	
 	uri = Utils::urlDecode(uri);
 
+	if (_loc.hasRoot && !_loc.root.empty()) {
+		root = _loc.root;
+		if (!root.empty() && root[root.size() - 1] == '/')
+			root.erase(root.size() - 1);
+	} else if (_server.hasRoot && !_server.root.empty()) {
+		root = _server.root;
+		if (!root.empty() && root[root.size() - 1] == '/')
+			root.erase(root.size() - 1);
+	} else {
+		root = ".";
+	}
+
 	if (!uri.empty() && uri[0] == '/')
-		uri = uri.substr(1); // remove leading slash
-	
-	if (!root.empty() && root[root.size() - 1] == '/')
-		return root + uri; // avoid double slash
+		uri = uri.substr(1);
+
+	if (uri.empty())
+		return root;
 	return root + "/" + uri;
 }
 
@@ -152,6 +154,10 @@ char **CGIHandler::buildEnv() const
 	env.push_back("QUERY_STRING=" + queryString);
 	env.push_back("REDIRECT_STATUS=200"); // Required by php-cgi
 
+	std::string docRoot = _loc.hasRoot ? _loc.root : (_server.hasRoot ? _server.root : ".");
+	env.push_back("DOCUMENT_ROOT=" + docRoot);
+	env.push_back("REMOTE_ADDR=127.0.0.1");
+
 	// Content-Type and Content-Length
 	std::map<std::string, std::string>::const_iterator ct = _req._headers.find("content-type");
 	if (ct != _req._headers.end())
@@ -212,7 +218,17 @@ CgiFds CGIHandler::start(HttpResponse & res)
 	// Create pipes for stdin and stdout
 	int stdinPipe[2];
 	int stdoutPipe[2];
-	if (pipe(stdinPipe) < 0 || pipe(stdoutPipe) < 0) {
+	if (pipe(stdinPipe) < 0) {
+		res.setStatus(500, "Internal Server Error");
+		std::string body = "<html><body><h1>500 Internal Server Error</h1><p>pipe() failed</p></body></html>";
+		res.setBody(body);
+		res.setContentType("text/html");
+		res.setContentLength(body.size());
+		return (fds);
+	}
+	if (pipe(stdoutPipe) < 0) {
+		close(stdinPipe[0]);
+		close(stdinPipe[1]);
 		res.setStatus(500, "Internal Server Error");
 		std::string body = "<html><body><h1>500 Internal Server Error</h1><p>pipe() failed</p></body></html>";
 		res.setBody(body);
@@ -264,6 +280,10 @@ void CGIHandler::executeChild(int stdinPipe[2], int stdoutPipe[2], const std::st
 
 	close(stdinPipe[0]);
 	close(stdoutPipe[1]);
+
+	for (int fd = 3; fd < 256; ++fd) {
+		::close(fd);
+	}
 
 	std::string dir = scriptPath;
 	std::string scriptFile = scriptPath;
