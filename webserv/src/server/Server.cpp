@@ -16,20 +16,35 @@
 #include "Router.hpp"
 #include "Utils.hpp"
 
+#include <iostream>
+#include <cstring>
+#include <cerrno>
+#include <cctype>
+#include <sstream>
+#include <map>
+
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <csignal>
+#include <sys/wait.h>
+
 static volatile std::sig_atomic_t g_stopRequested = 0;
 
 extern "C" void handleSigint(int) {
 	g_stopRequested = 1;
 }
 
-namespace {
-	bool shouldUsePassive(const std::string &host) {
-		return host.empty() || host == "0.0.0.0" || host == "::";
-	}
+static bool shouldUsePassive(const std::string &host) {
+	return host.empty() || host == "0.0.0.0" || host == "::";
+}
 
-	bool isWildcardHost(const std::string &host) {
-		return host.empty() || host == "0.0.0.0";
-	}
+static bool isWildcardHost(const std::string &host) {
+	return host.empty() || host == "0.0.0.0";
 }
 
 Server::Server(const Config &config) : _config(config) { initListenSockets(); }
@@ -73,11 +88,9 @@ void Server::openListenSocket(const ListenConfig &listenConfig, std::size_t serv
 	hints.ai_socktype = SOCK_STREAM;
 	hints.ai_flags = shouldUsePassive(listenConfig.host) ? AI_PASSIVE : 0;
 
-	std::ostringstream portText;
-	portText << listenConfig.port;
 	struct addrinfo *result = NULL;
 	const char *host = shouldUsePassive(listenConfig.host) ? NULL : listenConfig.host.c_str();
-	int err = ::getaddrinfo(host, portText.str().c_str(), &hints, &result);
+	int err = ::getaddrinfo(host, Utils::toString(listenConfig.port).c_str(), &hints, &result);
 	if (err != 0) {
 		std::string message = "getaddrinfo() failed: ";
 		message += ::gai_strerror(err);
@@ -151,17 +164,31 @@ void Server::rebuildPollFds() {
 			c.events |= POLLOUT;
 		_pollFds.push_back(c);
 	}
+
+	for (std::map<int, CgiTask>::iterator it = _activeCgis.begin(); it != _activeCgis.end(); ++it) {
+		// read from the CGI stdout pipe
+		struct pollfd pfdOut;
+		std::memset(&pfdOut, 0, sizeof(pfdOut));
+		pfdOut.fd = it->second.stdoutFd;
+		pfdOut.events = POLLIN;
+		_pollFds.push_back(pfdOut);
+
+		// write to the CGI stdin pipe if there's data to send
+		if (it->second.stdinFd >= 0 && it->second.writeOffset < it->second.inputData.size()) {
+			struct pollfd pfdIn;
+			std::memset(&pfdIn, 0, sizeof(pfdIn));
+			pfdIn.fd = it->second.stdinFd;
+			pfdIn.events = POLLOUT;
+			_pollFds.push_back(pfdIn);
+		}
+	}
 }
 
 void Server::acceptClients(int listenFd) {
 	while (true) {
 		int clientFd = ::accept(listenFd, NULL, NULL);
-		if (clientFd < 0) {
-			if (errno == EAGAIN || errno == EWOULDBLOCK)
-				return;
-			std::cerr << "accept() failed: " << std::strerror(errno) << std::endl;
+		if (clientFd < 0)
 			return;
-		}
 		try {
 			setNonBlocking(clientFd);
 		} catch (...) {
@@ -201,11 +228,7 @@ void Server::handleClientRead(int fd)
 				if (!req.parse(buffer))
 				{
 					HttpResponse response;
-					response.setStatus(400, "Bad Request");
-					response.setContentType("text/html");
-					std::string body = "<html><body><h1>400 Bad Request</h1></body></html>";
-					response.setBody(body);
-					response.setContentLength(body.size());
+					response.setError(400);
 					it->second.outBuffer() = response.toString();
 					buffer.clear();
 					_pendingRequests.erase(fd);
@@ -236,18 +259,14 @@ void Server::handleClientRead(int fd)
 			}
 			else
 			{
-				if (it->second.isTimedOut(getServerForClient(fd).clientTimeout))
-				{
-					HttpResponse response;
-					response.setStatus(408, "Request Timeout");
-					std::string body = "<html><body><h1>408 Request Timeout</h1></body></html>";
-					response.setBody(body);
-					response.setContentType("text/html");
-					response.setContentLength(body.size());
-					it->second.outBuffer() = response.toString();
-					_pendingRequests.erase(fd);
-					return;
-				}
+			if (it->second.isTimedOut(getServerForClient(fd).clientTimeout))
+			{
+				HttpResponse response;
+				response.setError(408);
+				it->second.outBuffer() = response.toString();
+				_pendingRequests.erase(fd);
+				return;
+			}
 				return;
 			}
 		}
@@ -285,7 +304,7 @@ void Server::handleClientRead(int fd)
 			if (si != _clientServers.end())
 				serverIdx = si->second;
 
-			std::map<std::string, std::string>::const_iterator hostIt = req._headers.find("Host");
+			std::map<std::string, std::string>::const_iterator hostIt = req._headers.find("host");
 			if (hostIt != req._headers.end())
 			{
 				std::string hostHeader = hostIt->second;
@@ -308,13 +327,35 @@ void Server::handleClientRead(int fd)
 			}
 
 			Router router;
-			router.route(req, response, _config.servers()[serverIdx]);
-
-			response.setHeader("Server", "webserv/1.0");
-			response.setHeader("Date", Utils::formatDate());
+			CgiFds cgi = router.route(req, response, _config.servers()[serverIdx]);
 
 			bool keepAlive = shouldKeepAlive(req);
 			it->second.setKeepAlive(keepAlive);
+
+			if (cgi.pid > 0)
+			{
+				CgiTask task;
+				task.pid = cgi.pid;
+				task.stdoutFd = cgi.readFd;
+				task.stdinFd = cgi.writeFd;
+				task.clientFd = fd; // client socket fd
+				task.outputData = "";
+				task.inputData = req._body; // POST data to send to CGI
+				task.writeOffset = 0;
+				task.startTime = std::time(NULL);
+				if (task.inputData.empty())
+				{
+					if (task.stdinFd >= 0)
+					{
+						::close(task.stdinFd);
+						task.stdinFd = -1;
+					}
+				}
+				_activeCgis[cgi.readFd] = task;
+				_pendingRequests.erase(fd);
+				return; // Freeze the request handling until CGI is done
+			}
+			// if it is not a CGI request, we continue to send the static response
 			if (keepAlive)
 				response.setHeader("Connection", "keep-alive");
 			else
@@ -366,6 +407,23 @@ void Server::closeClient(int fd) {
 	std::map<int, Client>::iterator it = _clients.find(fd);
 	if (it == _clients.end())
 		return;
+
+	// Clean up any active CGI tasks associated with this client
+	std::map<int, CgiTask>::iterator cgiIt = _activeCgis.begin();
+	while (cgiIt != _activeCgis.end()) {
+		if (cgiIt->second.clientFd == fd) {
+			kill(cgiIt->second.pid, SIGKILL);
+			int status;
+			waitpid(cgiIt->second.pid, &status, WNOHANG);
+			if (cgiIt->second.stdinFd >= 0)
+				::close(cgiIt->second.stdinFd);
+			::close(cgiIt->second.stdoutFd);
+			_activeCgis.erase(cgiIt++);
+		} else {
+			++cgiIt;
+		}
+	}
+
 	it->second.closeFd();
 	_clients.erase(it);
 	_pendingRequests.erase(fd);
@@ -389,7 +447,7 @@ const ServerConfig &Server::getServerForClient(int fd) const
 
 bool Server::shouldKeepAlive(const HttpRequest &req) const
 {
-	std::map<std::string, std::string>::const_iterator it = req._headers.find("Connection");
+	std::map<std::string, std::string>::const_iterator it = req._headers.find("connection");
 	if (it != req._headers.end())
 	{
 		std::string val = it->second;
@@ -403,6 +461,50 @@ bool Server::shouldKeepAlive(const HttpRequest &req) const
 
 void Server::checkTimeouts()
 {
+	checkCgiTimeouts();
+	checkClientTimeouts();
+}
+
+void Server::checkCgiTimeouts()
+{
+	std::map<int, CgiTask>::iterator cgiIt = _activeCgis.begin();
+	while (cgiIt != _activeCgis.end())
+	{
+		if (std::time(NULL) - cgiIt->second.startTime > 5)
+		{
+			kill(cgiIt->second.pid, SIGKILL);
+			
+			int status;
+			waitpid(cgiIt->second.pid, &status, WNOHANG);
+
+			int clientFd = cgiIt->second.clientFd;
+			std::map<int, Client>::iterator clientIt = _clients.find(clientFd);
+			if (clientIt != _clients.end())
+			{
+				HttpResponse response;
+				response.setError(504, "CGI process took too long");
+				response.setHeader("Connection", "close");
+				
+				clientIt->second.setKeepAlive(false);
+				clientIt->second.outBuffer() = response.toString();
+				clientIt->second.updateActivity();
+			}
+
+			if (cgiIt->second.stdinFd >= 0)
+				::close(cgiIt->second.stdinFd);
+			::close(cgiIt->second.stdoutFd);
+			
+			_activeCgis.erase(cgiIt++);
+		}
+		else
+		{
+			++cgiIt;
+		}
+	}
+}
+
+void Server::checkClientTimeouts()
+{
 	std::map<int, Client>::iterator it = _clients.begin();
 	while (it != _clients.end())
 	{
@@ -415,11 +517,9 @@ void Server::checkTimeouts()
 			if (it->second.outBuffer().empty() && _pendingRequests.find(fd) != _pendingRequests.end())
 			{
 				HttpResponse response;
-				response.setStatus(408, "Request Timeout");
-				std::string body = "<html><body><h1>408 Request Timeout</h1></body></html>";
-				response.setBody(body);
-				response.setContentType("text/html");
-				response.setContentLength(body.size());
+				response.setError(408);
+				response.setHeader("Connection", "close");
+				it->second.setKeepAlive(false);
 				it->second.outBuffer() = response.toString();
 				_pendingRequests.erase(fd);
 			}
@@ -459,16 +559,127 @@ void Server::run() {
 				continue;
 			}
 
-			if (p.revents & (POLLHUP | POLLERR | POLLNVAL)) {
-				closeClient(p.fd);
+			if (handleCgiEvent(p))
 				continue;
+
+			if (_clients.find(p.fd) != _clients.end()) {
+				if (p.revents & (POLLHUP | POLLERR | POLLNVAL)) {
+					closeClient(p.fd);
+					continue;
+				}
+				if (p.revents & POLLIN)
+					handleClientRead(p.fd);
+				if (p.revents & POLLOUT)
+					handleClientWrite(p.fd);
 			}
-			if (p.revents & POLLIN)
-				handleClientRead(p.fd);
-			if (p.revents & POLLOUT)
-				handleClientWrite(p.fd);
 		}
 		checkTimeouts();
 	}
 	std::cout << "Shutting down server..." << std::endl;
+}
+
+bool Server::handleCgiEvent(struct pollfd &p)
+{
+	for (std::map<int, CgiTask>::iterator cgiIt = _activeCgis.begin();
+			cgiIt != _activeCgis.end(); ++cgiIt)
+	{
+		// if the event is on the CGI stdin pipe
+		if (cgiIt->second.stdinFd >= 0 && p.fd == cgiIt->second.stdinFd)
+		{
+			if (p.revents & (POLLOUT | POLLERR | POLLHUP))
+				handleCgiWrite(cgiIt->second);
+			return true;
+		}
+		// if the event is on the CGI stdout pipe
+		if (p.fd == cgiIt->second.stdoutFd)
+		{
+			if (p.revents & (POLLIN | POLLHUP | POLLERR))
+				handleCgiRead(cgiIt);
+			return true;
+		}
+	}
+	return false;
+}
+
+void Server::handleCgiWrite(CgiTask &task)
+{
+	if (task.stdinFd < 0)
+		return;
+	if (task.writeOffset < task.inputData.size())
+	{
+		ssize_t n = ::write(task.stdinFd, task.inputData.c_str() + task.writeOffset, 
+							task.inputData.size() - task.writeOffset);
+		if (n > 0) 
+			task.writeOffset += n;
+		else
+		{
+			::close(task.stdinFd);
+			task.stdinFd = -1;
+			return;
+		}
+	}
+	
+	// If all data has been written, close the stdin pipe so child receives EOF
+	if (task.writeOffset >= task.inputData.size())
+	{
+		if (task.stdinFd >= 0)
+		{
+			::close(task.stdinFd);
+			task.stdinFd = -1;
+		}
+	}
+}
+
+void Server::handleCgiRead(std::map<int, CgiTask>::iterator &cgiIt)
+{
+	char buf[4096];
+	ssize_t n = ::read(cgiIt->second.stdoutFd, buf, sizeof(buf));
+	
+	if (n > 0)
+	{
+		cgiIt->second.outputData.append(buf, n);
+		return;
+	}
+	
+	// EOF or error on CGI stdout
+	int status = 0;
+	pid_t ret = waitpid(cgiIt->second.pid, &status, WNOHANG);
+	if (ret == 0)
+	{
+		kill(cgiIt->second.pid, SIGKILL);
+		waitpid(cgiIt->second.pid, &status, WNOHANG);
+	}
+
+	// Parse the CGI output and build the final HttpResponse
+	HttpResponse response;
+	bool hasError = (WIFSIGNALED(status) || (WIFEXITED(status) && WEXITSTATUS(status) != 0));
+	if (hasError && cgiIt->second.outputData.empty())
+	{
+		response.setError(500, "CGI script exited with error");
+	}
+	else if (!CGIHandler::finalize(cgiIt->second.outputData, response))
+	{
+		response.setError(500, "CGI output malformed");
+	}
+
+	// Search for the client associated with this CGI task and send the response
+	int clientFd = cgiIt->second.clientFd;
+	std::map<int, Client>::iterator clientIt = _clients.find(clientFd);
+	if (clientIt != _clients.end())
+	{
+		bool keepAlive = clientIt->second.keepAlive();
+		if (keepAlive)
+			response.setHeader("Connection", "keep-alive");
+		else
+			response.setHeader("Connection", "close");
+
+		clientIt->second.outBuffer() = response.toString();
+		clientIt->second.updateActivity();
+	}
+	
+	// Clean up the CGI task
+	if (cgiIt->second.stdinFd >= 0) 
+		::close(cgiIt->second.stdinFd);
+	::close(cgiIt->second.stdoutFd);
+	_activeCgis.erase(cgiIt);
 }

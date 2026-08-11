@@ -22,6 +22,7 @@ class HttpResponse
 	int statusCode() const;
 
 	void clear();
+	void setError(int code, const std::string &detail = "");
 
 	static std::string reasonPhrase(int code);
 

@@ -6,9 +6,12 @@
 #include <sstream>
 #include <cstdlib>
 
-namespace Utils {
+Utils::Utils() {}
+Utils::~Utils() {}
+Utils::Utils(const Utils &other) { (void)other; }
+Utils &Utils::operator=(const Utils &other) { (void)other; return *this; }
 
-std::string readFile(const std::string &path)
+std::string Utils::readFile(const std::string &path)
 {
 	std::ifstream file(path.c_str(), std::ios::binary);
 	if (!file.is_open())
@@ -18,13 +21,13 @@ std::string readFile(const std::string &path)
 	return buffer.str();
 }
 
-bool fileExists(const std::string &path)
+bool Utils::fileExists(const std::string &path)
 {
 	struct stat st;
 	return stat(path.c_str(), &st) == 0;
 }
 
-bool isDirectory(const std::string &path)
+bool Utils::isDirectory(const std::string &path)
 {
 	struct stat st;
 	if (stat(path.c_str(), &st) != 0)
@@ -32,7 +35,7 @@ bool isDirectory(const std::string &path)
 	return S_ISDIR(st.st_mode);
 }
 
-std::string getMimeType(const std::string &ext)
+std::string Utils::getMimeType(const std::string &ext)
 {
 	if (ext == ".html" || ext == ".htm")
 		return "text/html";
@@ -73,7 +76,7 @@ std::string getMimeType(const std::string &ext)
 	return "application/octet-stream";
 }
 
-std::string urlDecode(const std::string &url)
+std::string Utils::urlDecode(const std::string &url)
 {
 	std::string result;
 	for (std::size_t i = 0; i < url.size(); ++i)
@@ -100,7 +103,7 @@ std::string urlDecode(const std::string &url)
 	return result;
 }
 
-std::string extractQueryString(const std::string &path)
+std::string Utils::extractQueryString(const std::string &path)
 {
 	std::size_t pos = path.find('?');
 	if (pos == std::string::npos)
@@ -108,7 +111,7 @@ std::string extractQueryString(const std::string &path)
 	return path.substr(pos + 1);
 }
 
-std::string stripQueryString(const std::string &path)
+std::string Utils::stripQueryString(const std::string &path)
 {
 	std::size_t pos = path.find('?');
 	if (pos == std::string::npos)
@@ -116,7 +119,7 @@ std::string stripQueryString(const std::string &path)
 	return path.substr(0, pos);
 }
 
-std::string formatDate()
+std::string Utils::formatDate()
 {
 	char buf[128];
 	std::time_t now = std::time(NULL);
@@ -127,4 +130,19 @@ std::string formatDate()
 	return std::string(buf);
 }
 
+std::string Utils::joinPath(const std::string &dir, const std::string &path)
+{
+	if (dir.empty())
+		return path;
+	if (path.empty())
+		return dir;
+
+	bool dirHasSlash = (dir[dir.size() - 1] == '/');
+	bool pathHasSlash = (path[0] == '/');
+
+	if (dirHasSlash && pathHasSlash)
+		return dir + path.substr(1);
+	if (!dirHasSlash && !pathHasSlash)
+		return dir + "/" + path;
+	return dir + path;
 }

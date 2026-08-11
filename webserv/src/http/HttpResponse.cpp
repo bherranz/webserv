@@ -28,9 +28,7 @@ void HttpResponse::setContentType(const std::string &mime)
 
 void HttpResponse::setContentLength(std::size_t len)
 {
-	std::ostringstream oss;
-	oss << len;
-	_headers["Content-Length"] = oss.str();
+	_headers["Content-Length"] = Utils::toString(len);
 }
 
 int HttpResponse::statusCode() const
@@ -46,11 +44,33 @@ void HttpResponse::clear()
 	_body.clear();
 }
 
+void HttpResponse::setError(int code, const std::string &detail)
+{
+	_statusCode = code;
+	_statusReason = reasonPhrase(code);
+
+	std::string codeStr = Utils::toString(code);
+	std::string body = "<html><head><title>" + codeStr + " " + _statusReason + "</title></head><body>";
+	body += "<h1>" + codeStr + " " + _statusReason + "</h1>";
+	if (!detail.empty())
+		body += "<p>" + detail + "</p>";
+	body += "</body></html>";
+
+	setBody(body);
+	setContentType("text/html");
+	setContentLength(body.size());
+}
+
 std::string HttpResponse::toString() const
 {
 	std::ostringstream response;
 
 	response << "HTTP/1.1 " << _statusCode << " " << _statusReason << "\r\n";
+
+	if (_headers.find("Server") == _headers.end())
+		response << "Server: webserv/1.0\r\n";
+	if (_headers.find("Date") == _headers.end())
+		response << "Date: " << Utils::formatDate() << "\r\n";
 
 	for (std::map<std::string, std::string>::const_iterator it = _headers.begin();
 		 it != _headers.end(); ++it)
