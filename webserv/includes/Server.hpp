@@ -10,7 +10,6 @@
 #include <cerrno>
 #include <cctype>
 #include <sstream>
-#include <map>
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/types.h>
@@ -19,10 +18,14 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <csignal>
+#include <sys/wait.h>
 
+#include "HttpRequest.hpp"
+#include "HttpResponse.hpp"
+#include "Router.hpp"
+#include "Utils.hpp"
 #include "Config.hpp"
 #include "Client.hpp"
-#include "HttpRequest.hpp"
 
 class Server {
 public:
@@ -30,12 +33,13 @@ public:
 	~Server();
 
 	void run();
-	
+
 	private:
 	Server(const Server &);
 	Server &operator=(const Server &);
-	
-	struct CgiTask {
+
+	struct CgiTask
+	{
 		pid_t pid;
 		int stdoutFd;
 		int stdinFd;
@@ -65,7 +69,6 @@ public:
 	bool handleCgiEvent(struct pollfd &p);
 	void handleCgiWrite(CgiTask &task);
 	void handleCgiRead(std::map<int, CgiTask>::iterator &cgiIt);
-
 
 	std::map<int, CgiTask> _activeCgis;
 

@@ -86,5 +86,4 @@ class Config
 
 	private:
 	std::vector<ServerConfig> _servers;
-
 };

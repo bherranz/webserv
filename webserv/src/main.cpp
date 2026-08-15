@@ -11,7 +11,6 @@
 /* ************************************************************************** */
 
 #include <iostream>
-
 #include "Config.hpp"
 #include "Server.hpp"
 
@@ -24,12 +23,10 @@ int main(int argc, char **argv)
         std::cerr << "Usage: ./webserv [config_file]\n";
         return (1);
     }
-
     if (argc == 2)
         config_file = argv[1];
     else
         config_file = "config/default.conf";
-
     try
     {
         // Load and parse config file

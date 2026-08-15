@@ -75,7 +75,6 @@ std::vector<ServerConfig> ConfigParser::execute(const std::string& path)
 	std::ifstream file(path.c_str());
 	if (!file.is_open())
 		throw (std::runtime_error("config error: cannot open file '" + path + "'"));
-
 	std::vector<ServerConfig> servers;
 	std::vector<std::vector<std::string> > statements;
 	std::vector<std::string> currentStatement;
@@ -89,11 +88,11 @@ std::vector<ServerConfig> ConfigParser::execute(const std::string& path)
 		if (line.empty()) continue;
 
 		std::vector<std::string> lineTokens = tokenize(line);
-		
+
 		for (std::size_t j = 0; j < lineTokens.size(); j++)
 		{
 			currentStatement.push_back(lineTokens[j]);
-			
+
 			// If we find a delimitator, end and save instrucction
 			if (lineTokens[j] == "{" || lineTokens[j] == "}" || lineTokens[j] == ";")
 			{
@@ -112,7 +111,7 @@ std::vector<ServerConfig> ConfigParser::execute(const std::string& path)
 	for (std::size_t i = 0; i < statements.size(); ++i)
 	{
 		const std::vector<std::string>& tokens = statements[i];
-		
+
 		if (tokens.empty()) continue;
 
 		if (isServerStart(tokens))
@@ -126,7 +125,7 @@ std::vector<ServerConfig> ConfigParser::execute(const std::string& path)
 std::vector<ServerConfig> ConfigParser::parseFile(const std::string& path)
 {
 	//Here we create the class for the parsing as in COnfigParser.hpp , all the parsed data goes there
-    ConfigParser parser; 
+    ConfigParser parser;
     return parser.execute(path);
 }
 
