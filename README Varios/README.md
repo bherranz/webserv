@@ -605,3 +605,74 @@ HttpResponse → building responses
 Router → decidir comportamiento
 ConfigParser → leer config
 CGIHandler → ejecutar scripts
+
+ESQUEMA FUNCIONAMIENTO SERVIDOR
+
+                     CONFIG
+                        │
+                        ▼
+              host = 127.0.0.1
+              port = 8080
+                        │
+                        ▼
+                    socket()
+                        │
+                        ▼
+                     bind()
+                        │
+                        ▼
+                    listen()
+                        │
+                        ▼
+             ┌──────────────────────┐
+             │   SERVER SOCKET      │
+             │   127.0.0.1:8080     │
+             └──────────┬───────────┘
+                        │
+                        ▼
+                  ┌───────────┐
+    ┌────────────►│   poll()  │◄────────────────────────────────┐
+    │             └─────┬─────┘                                 │
+    │                   │                                       │
+    │         ┌─────────┴──────────┐                            │
+    │         │                    │                            │
+    │         ▼                    ▼                            │
+    │  serverFd listo        clientFd listo                     │
+    │         │                    │                            │
+    │         ▼                    ▼                            │
+    │     accept()              recv()                          │
+    │         │                    │                            │
+    │         ▼                    ▼                            │
+    │   nuevo clientFd       HTTP Request                       │
+    │         │                    │                            │
+    │         └──────────┐         ▼                            │
+    │                    │    parse HTTP                        │
+    │                    │         │                            │
+    │                    │         ▼                            │
+    │                    │      route                           │
+    │                    │         │                            │
+    │                    │    ┌────┼────┐                       │
+    │                    │    ▼    ▼    ▼                       │
+    │                    │ static CGI upload/error              │
+    │                    │    │    │    │                       │
+    │                    │    └────┼────┘                       │
+    │                    │         ▼                            │
+    │                    │   HTTP Response                      │
+    │                    │         │                            │
+    │                    └────────►│                            │
+    │                              ▼                            │
+    │                         poll(POLLOUT)                     │
+    │                              │                            │
+    │                              ▼                            │
+    │                            send()                         │
+    │                              │                            │
+    │                         ¿terminado?                       │
+    │                          │       │                        │
+    │                         NO      SÍ                        │
+    │                          │       │                        │
+    │                          │       ▼                        │
+    │                          │  keep-alive?                   │
+    │                          │    │       │                   │
+    │                          │   NO      SÍ                   │
+    │                          │    │       │                   │
+    └──────────────────────────┘  close     └───────────────────┘
