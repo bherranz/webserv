@@ -1,15 +1,3 @@
-/* ************************************************************************** */
-/*                                                                            */
-/*                                                        :::      ::::::::   */
-/*   main.cpp                                           :+:      :+:    :+:   */
-/*                                                    +:+ +:+         +:+     */
-/*   By: miparis <miparis@student.42madrid.com>     +#+  +:+       +#+        */
-/*                                                +#+#+#+#+#+   +#+           */
-/*   Created: 2026/03/31 16:46:31 by jaime             #+#    #+#             */
-/*   Updated: 2026/06/24 12:14:54 by miparis          ###   ########.fr       */
-/*                                                                            */
-/* ************************************************************************** */
-
 #include <iostream>
 #include "Config.hpp"
 #include "Server.hpp"
@@ -33,11 +21,10 @@ int main(int argc, char **argv)
         Config config;
         config.load(config_file);
 
-        std::cout << "Config loaded" << std::endl;
-
+		std::cout << BLUE << "SERVER READY " << NC << std::endl;
         // Init server
         Server server(config);
-        server.run();
+		server.run();
 	}
     catch (const std::exception &e)
     {

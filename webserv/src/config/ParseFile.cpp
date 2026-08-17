@@ -1,10 +1,6 @@
 #include "ConfigParser.hpp"
 #include "Config.hpp"
 
-/*
-** Quita todo lo que venga después de '#'.
-** Caso límite: línea vacía o línea que solo es comentario.
-*/
 std::string ConfigParser::removeComment(const std::string& line) const
 {
     std::size_t pos = line.find('#');
@@ -13,10 +9,7 @@ std::string ConfigParser::removeComment(const std::string& line) const
     return line.substr(0, pos);
 }
 
-/*
-** Quita espacios, tabs, '\r' y similares al principio y al final.
-** Importante para soportar CRLF y config con sangrado.
-*/
+
 std::string ConfigParser::trim(const std::string& line) const
 {
     std::size_t start = 0;
@@ -133,5 +126,5 @@ void Config::load(const std::string &path)
 {
 	_servers = ConfigParser::parseFile(path);
 	validate();
-	print();
+	//print();
 }

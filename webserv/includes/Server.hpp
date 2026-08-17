@@ -1,5 +1,4 @@
-#ifndef SERVER_HPP
-#define SERVER_HPP
+#pragma once
 
 #include <map>
 #include <vector>
@@ -80,5 +79,3 @@ public:
 	std::map<int, std::size_t> _clientServers;
 	std::map<int, HttpRequest> _pendingRequests;
 };
-
-#endif

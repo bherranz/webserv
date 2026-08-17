@@ -93,9 +93,9 @@ void ConfigParser::parseLocationBlock(const std::vector<std::vector<std::string>
 void Config::print() const
 {
     std::cout << "\n=======================================================" << std::endl;
-    std::cout << "      RESULTADO DEL PARSEO DE CONFIGURACIÓN            " << std::endl;
+    std::cout << "      RESULT OF CONFIG PARSING		           " << std::endl;
     std::cout << "=======================================================" << std::endl;
-    std::cout << "Servidores encontrados: " << _servers.size() << "\n" << std::endl;
+    std::cout << "Servers: " << _servers.size() << "\n" << std::endl;
 
     for (std::size_t i = 0; i < _servers.size(); ++i)
     {
@@ -117,7 +117,7 @@ void Config::print() const
             std::cout << std::endl;
         }
 
-        // --- Variables Globales ---
+        // --- Globals ---
         if (srv.hasRoot)
             std::cout << "  |- Root: " << srv.root << std::endl;
         
@@ -131,10 +131,9 @@ void Config::print() const
         if (srv.hasClientMaxBodySize)
             std::cout << "  |- Client Max Body Size: " << srv.clientMaxBodySize << std::endl;
 
-        // --- Error Pages (Mapa) ---
+        // --- Error Pages (Map) ---
         if (!srv.errorPages.empty()) {
             std::cout << "  |- Error Pages:" << std::endl;
-            // En C++98 necesitamos un iterador constante para leer un mapa const
             std::map<int, std::string>::const_iterator it = srv.errorPages.begin();
             for (; it != srv.errorPages.end(); ++it) {
                 std::cout << "  |  - Error " << it->first << " -> " << it->second << std::endl;
