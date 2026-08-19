@@ -62,7 +62,7 @@ std::string Router::resolvePath(const std::string &uriPath, const LocationConfig
 	else if (server.hasRoot && !server.root.empty())
 		root = server.root;
 
-	std::string cleanPath = Utils::urlDecode(Utils::stripQueryString(uriPath));
+	std::string cleanPath = Utils::normalizePath(Utils::urlDecode(Utils::stripQueryString(uriPath)));
 	return Utils::joinPath(root, cleanPath);
 }
 	
@@ -117,14 +117,26 @@ CgiFds Router::route(const HttpRequest &req, HttpResponse &res, const ServerConf
 		res.setHeader("Allow", allow);
 		return noCgi;
 	}
-	else if (server.hasClientMaxBodySize && server.clientMaxBodySize > 0)
+
+	std::size_t maxBodySize = 0;
+	bool hasMaxBodySize = false;
+	if (loc != NULL && loc->hasClientMaxBodySize)
 	{
-		if (req._body.size() > server.clientMaxBodySize)
-		{
-			buildErrorResponse(res, 413, server);
-			return noCgi;
-		}
+		maxBodySize = loc->clientMaxBodySize;
+		hasMaxBodySize = true;
 	}
+	else if (server.hasClientMaxBodySize)
+	{
+		maxBodySize = server.clientMaxBodySize;
+		hasMaxBodySize = true;
+	}
+
+	if (hasMaxBodySize && maxBodySize > 0 && req._body.size() > maxBodySize)
+	{
+		buildErrorResponse(res, 413, server);
+		return noCgi;
+	}
+
 	// If it is a CGI request, handle it and return the fds
 	if (loc != NULL && isCgiExtension(req._path, *loc))
 		return handleCgi(req, res, *loc, server);
@@ -267,7 +279,7 @@ void Router::handlePost(const HttpRequest &req, HttpResponse &res, const Locatio
 	else if (server.hasRoot && !server.root.empty())
 		root = server.root;
 
-	std::string cleanPath = Utils::urlDecode(Utils::stripQueryString(req._path));
+	std::string cleanPath = Utils::normalizePath(Utils::urlDecode(Utils::stripQueryString(req._path)));
 
 	// Strip the location prefix from the URI so uploaded files land in upload_store
 	// without duplicating the location path segment.
@@ -411,6 +423,10 @@ void Router::buildErrorResponse(HttpResponse &res, int code, const ServerConfig 
 		std::string root = (server.hasRoot && !server.root.empty()) ? server.root : ".";
 		std::string fullPath = Utils::joinPath(root, it->second);
 		std::string content = Utils::readFile(fullPath);
+		if (content.empty())
+			content = Utils::readFile(it->second);
+		if (content.empty() && it->second.compare(0, 1, "/") != 0)
+			content = Utils::readFile("./" + it->second);
 		if (!content.empty())
 		{
 			res.setStatus(code, HttpResponse::reasonPhrase(code));

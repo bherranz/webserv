@@ -40,6 +40,18 @@ void HttpRequest::appendBodyData(const std::string &data)
 	_body.append(data);
 }
 
+void HttpRequest::clear()
+{
+	_method.clear();
+	_path.clear();
+	_version.clear();
+	_headers.clear();
+	_body.clear();
+	_headersDone = false;
+	_contentLength = 0;
+	_chunked = false;
+}
+
 bool HttpRequest::parse(const std::string &raw)
 {
 	std::istringstream stream(raw);
@@ -51,7 +63,8 @@ bool HttpRequest::parse(const std::string &raw)
 			return false;
 		if (!line.empty() && line[line.size() - 1] == '\r')
 			line.erase(line.size() - 1);
-		parseRequestLine(line);
+		if (!parseRequestLine(line))
+			return false;
 	}
 
 	while (std::getline(stream, line))
@@ -68,21 +81,35 @@ bool HttpRequest::parse(const std::string &raw)
 
 	if (_headersDone)
 	{
-		std::map<std::string, std::string>::iterator cl = _headers.find("content-length");
-		if (cl != _headers.end())
-		{
-			char *end = NULL;
-			long len = std::strtol(cl->second.c_str(), &end, 10);
-			if (end != NULL && *end == '\0' && len >= 0)
-				_contentLength = static_cast<std::size_t>(len);
-		}
+		if (_version == "HTTP/1.1" && _headers.find("host") == _headers.end())
+			return false;
 
 		std::map<std::string, std::string>::iterator te = _headers.find("transfer-encoding");
 		if (te != _headers.end() && te->second.find("chunked") != std::string::npos)
+		{
 			_chunked = true;
+		}
+		else
+		{
+			std::map<std::string, std::string>::iterator cl = _headers.find("content-length");
+			if (cl != _headers.end())
+			{
+				char *end = NULL;
+				long len = std::strtol(cl->second.c_str(), &end, 10);
+				if (end != NULL && *end == '\0' && len >= 0)
+					_contentLength = static_cast<std::size_t>(len);
+				else
+					return false;
+			}
+		}
 	}
 
 	return true;
+}
+
+bool HttpRequest::isChunked() const
+{
+	return _chunked;
 }
 
 bool HttpRequest::parseChunkedBody()
@@ -98,24 +125,22 @@ bool HttpRequest::parseChunkedBody()
 
 		std::string hexStr = _body.substr(i, endLine - i);
 
-		//if we find the "0\r\n\r\n" secuense it has to come with ; hence we pass it  so it doesnt breaks the header
 		std::size_t semi = hexStr.find(';');
 		if (semi != std::string::npos)
 			hexStr = hexStr.substr(0, semi);
 
-		// we check again for trash values
-		if (hexStr.find_first_not_of("0123456789abcdefABCDEF") != std::string::npos)
+		if (hexStr.empty() || hexStr.find_first_not_of("0123456789abcdefABCDEF") != std::string::npos)
 			throw std::runtime_error("Invalid chunk size format");
 
 		char *end = NULL;
-		//we do a conversion to hec to check to check size
 		long chunkSize = std::strtol(hexStr.c_str(), &end, 16);
 		if (end == NULL || *end != '\0' || chunkSize < 0)
 			throw std::runtime_error("Malformed chunk size");
-			
+
 		if (chunkSize == 0)
 		{
-			if (endLine + 2 <= _body.size())
+			std::size_t trailerEnd = _body.find("\r\n\r\n", endLine);
+			if (trailerEnd != std::string::npos)
 			{
 				_body = decoded;
 				return true;
@@ -124,13 +149,13 @@ bool HttpRequest::parseChunkedBody()
 		}
 
 		std::size_t chunkDataStart = endLine + 2;
-		std::size_t nextChunkStart = chunkDataStart + static_cast<std::size_t>(chunkSize) + 2; // +2 por el CRLF final
+		std::size_t nextChunkStart = chunkDataStart + static_cast<std::size_t>(chunkSize) + 2; // +2 for trailing CRLF
 
 		if (nextChunkStart > _body.size())
-			return false; // Incomplete chunck
+			return false; // Incomplete chunk
 
-		// Check for \r\n at end
-		if (_body.compare(chunkDataStart + chunkSize, 2, "\r\n") != 0)
+		// Check for \r\n at end of chunk data
+		if (_body.compare(chunkDataStart + static_cast<std::size_t>(chunkSize), 2, "\r\n") != 0)
 			throw std::runtime_error("Missing CRLF after chunk data");
 
 		decoded.append(_body, chunkDataStart, static_cast<std::size_t>(chunkSize));
@@ -140,13 +165,24 @@ bool HttpRequest::parseChunkedBody()
 	return false;
 }
 
-void HttpRequest::parseRequestLine(const std::string &line)
+bool HttpRequest::parseRequestLine(const std::string &line)
 {
 	std::istringstream headerData(line);
 
-	headerData >> _method;
-	headerData >> _path;
-	headerData >> _version;
+	if (!(headerData >> _method >> _path >> _version))
+		return false;
+
+	std::string extra;
+	if (headerData >> extra)
+		return false;
+
+	if (_path.empty() || _path[0] != '/')
+		return false;
+
+	if (_version != "HTTP/1.1" && _version != "HTTP/1.0")
+		return false;
+
+	return true;
 }
 
 void HttpRequest::parseHeaderLine(const std::string &line)
@@ -159,8 +195,10 @@ void HttpRequest::parseHeaderLine(const std::string &line)
 	std::string key = line.substr(0, separator);
 	std::string value = line.substr(separator + 1);
 
-	if (!value.empty() && value[0] == ' ')
+	while (!value.empty() && (value[0] == ' ' || value[0] == '\t'))
 		value.erase(0, 1);
+	while (!value.empty() && (value[value.size() - 1] == ' ' || value[value.size() - 1] == '\t'))
+		value.erase(value.size() - 1);
 	
 	for (std::size_t i = 0; i < key.length(); ++i)
 		key[i] = std::tolower(static_cast<unsigned char>(key[i]));

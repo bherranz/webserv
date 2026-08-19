@@ -30,5 +30,6 @@ class Utils
 		static std::string stripQueryString(const std::string &path);
 		static std::string formatDate();
 		static std::string joinPath(const std::string &dir, const std::string &path);
+		static std::string normalizePath(const std::string &path);
 };
 

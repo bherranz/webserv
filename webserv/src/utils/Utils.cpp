@@ -146,3 +146,36 @@ std::string Utils::joinPath(const std::string &dir, const std::string &path)
 		return dir + "/" + path;
 	return dir + path;
 }
+
+std::string Utils::normalizePath(const std::string &path)
+{
+	std::vector<std::string> segments;
+	std::istringstream ss(path);
+	std::string segment;
+
+	while (std::getline(ss, segment, '/'))
+	{
+		if (segment.empty() || segment == ".")
+			continue;
+		if (segment == "..")
+		{
+			if (!segments.empty())
+				segments.pop_back();
+		}
+		else
+		{
+			segments.push_back(segment);
+		}
+	}
+
+	std::string result;
+	for (std::size_t i = 0; i < segments.size(); ++i)
+		result += "/" + segments[i];
+
+	if (result.empty())
+		result = "/";
+	if (!path.empty() && path[path.size() - 1] == '/' && result != "/")
+		result += "/";
+
+	return result;
+}

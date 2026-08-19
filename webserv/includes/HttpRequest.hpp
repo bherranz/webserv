@@ -22,9 +22,11 @@ class HttpRequest
 	bool headersComplete() const;
 	bool bodyComplete();
 	void appendBodyData(const std::string &data);
+	bool isChunked() const;
+	void clear();
 
 	private:
-	void parseRequestLine(const std::string &line);
+	bool parseRequestLine(const std::string &line);
 	void parseHeaderLine(const std::string &line);
 	bool parseChunkedBody();
 
