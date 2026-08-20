@@ -57,6 +57,7 @@ public:
 	void acceptClients(int listenFd);
 	void handleClientRead(int fd);
 	void handleClientWrite(int fd);
+	void processClientRequests(int fd);
 	void closeClient(int fd);
 	bool isListenFd(int fd) const;
 
@@ -74,8 +75,10 @@ public:
 	Config _config;
 	std::vector<int> _listenFds;
 	std::map<int, std::size_t> _listenOwners;
+	std::map<int, int> _listenPorts;
 	std::vector<struct pollfd> _pollFds;
 	std::map<int, Client> _clients;
 	std::map<int, std::size_t> _clientServers;
+	std::map<int, int> _clientPorts;
 	std::map<int, HttpRequest> _pendingRequests;
 };
