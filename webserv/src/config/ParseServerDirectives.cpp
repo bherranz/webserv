@@ -73,7 +73,6 @@ void ConfigParser::parseErrorPage(const std::vector<std::string>& tokens, Server
 		server.errorPages[errorCode] = pagePath; //we save the differents code with the same path 
 	}
 }
-//->> NGNIX DOEST SAVE THE HOST INDEPENDANTLY, IT ALWAYS GOES IN THE LISTEN BLOCK -- CHECK IF DELETE
 void ConfigParser::parseHost(const std::vector<std::string>& tokens, ServerConfig& server)
 {
 	validateSemicolon(tokens);

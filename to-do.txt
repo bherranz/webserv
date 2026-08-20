@@ -1,0 +1,78 @@
+Webserv:
+Se usa una sola vez poll()??
+Faltan las paginas de error:
+	case 200: return "OK";
+	case 201: return "Created";
+	case 204: return "No Content";
+	case 301: return "Moved Permanently";
+	case 302: return "Found";
+	case 307: return "Temporary Redirect";
+	case 400: return "Bad Request";
+	case 403: return "Forbidden";
+	case 404: return "Not Found";
+	case 405: return "Method Not Allowed";
+	case 408: return "Request Timeout";
+	case 413: return "Content Too Large";
+	case 500: return "Internal Server Error";
+	case 501: return "Not Implemented";
+	case 502: return "Bad Gateway";
+	case 503: return "Service Unavailable";
+	case 504: return "Gateway Timeout";
+	default: return "Unknown";
+
+Fallos de diferenciacion entre codigos de timeout 504 (al parecer harcodeado) y 408. Al probar con slow_client deberia dar 408 y da 504
+
+Lo que dice gemini:
+El `slow_client.py` envía 10 bytes con 1 segundo de pausa entre cada uno. Es decir, el script tarda **exactamente 10 segundos** en terminar. Y justo tienes configurado el `keepalive_timeout` en **10 segundos**.
+
+Tu servidor está matando la conexión prematuramente y tirando el `504` por dos fallos muy concretos en la lógica de tu bucle principal. Vamos a cazarlos.
+
+### 🔍 Fallo 1: El Temporizador que no se renueva
+
+Cuando el servidor entra al `poll` y usa `recv()` para leer un byte del `slow_client.py`, está recibiendo actividad. Sin embargo, tu servidor está contando los 10 segundos desde que el cliente se conectó, **sin reiniciar el cronómetro**.
+
+**La Solución:** Cada vez que llamas a `recv()` y recibes > 0 bytes, tienes que actualizar la variable `last_activity` (o como la hayáis llamado en vuestro `Client_Connection` o `Server`) al tiempo actual. Si el cliente manda 1 byte, el contador de inactividad debe volver a cero.
+
+### 🔍 Fallo 2: Confusión de Timeouts (`keepalive` vs `client`)
+
+El servidor está aplicando el límite estricto de 10 segundos (`keepalive_timeout`) mientras el cliente aún está enviando la petición.
+
+* **`client_timeout` (60s):** Es el tiempo que le das al cliente para enviar su petición completa o para que el servidor procese todo. Se usa durante los estados `READING_REQUEST` o `PROCESSING`.
+* **`keepalive_timeout` (10s):** Es el tiempo que el servidor espera **después** de haber enviado la respuesta final (estado `CLOSING` o `IDLE`), esperando a ver si el cliente pide otra cosa antes de cerrarle el socket.
+
+**La Solución:** Tu lógica de comprobación de timeouts debería ser condicional según el estado del cliente:
+
+```cpp
+// Pseudocódigo para la validación del timeout en tu bucle
+long elapsed = currentTime - client.last_activity;
+
+if (client.state == READING_REQUEST && elapsed > config.client_timeout) {
+    // Tardó más de 60s en enviar la petición
+    client.response = builder.buildErrorResponse(408, "Request Timeout");
+    client.state = WRITING_RESPONSE;
+} 
+else if (client.state == WAITING_FOR_CGI && elapsed > config.client_timeout) {
+    // El CGI se colgó (infinito)
+    client.response = builder.buildErrorResponse(504, "Gateway Timeout");
+    client.state = WRITING_RESPONSE;
+}
+else if (client.state == IDLE && elapsed > config.keepalive_timeout) {
+    // Pasaron 10s sin pedir nada nuevo tras la última respuesta
+    closeConnection(client.fd);
+}
+
+```
+
+### 🔍 Fallo 3: El 504 Hardcodeado
+
+Como vimos antes, el servidor está devolviendo un `504 Gateway Timeout` porque, al saltar el límite de los 10 segundos, vuestra función de desconexión asigna un 504 por defecto a cualquier *timeout*, sin discriminar si fue culpa del cliente (408) o culpa del CGI (504).
+
+---
+
+### 🛠️ ¿Qué debes cambiar ahora mismo?
+
+1. Ve a la parte de tu código donde haces el `recv()` del socket del cliente.
+2. Justo debajo, si los bytes leídos son `> 0`, añade: `client.last_activity = getCurrentTime();` (renovar el ticket).
+3. Asegúrate de devolver `408` si el timeout ocurre mientras lees, y `504` si ocurre mientras esperas al CGI.
+
+Haz la prueba de actualizar la variable de tiempo con cada lectura. ¡Verás cómo el servidor sobrevive a los 10 segundos del `slow_client.py`, lee la petición completa y te devuelve una respuesta normal!
