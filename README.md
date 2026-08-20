@@ -40,7 +40,7 @@ make
 ./Webserv [configuration-file]
 ```
 
-If no configuration file is provided, `web.config` is used by default.
+If no configuration file is provided, `default.conf` is used by default.
 
 ### Configuration
 
