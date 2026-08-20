@@ -1,4 +1,5 @@
 #include "Server.hpp"
+#include "HttpResponse.hpp"
 
 static volatile std::sig_atomic_t g_stopRequested = 0;
 
@@ -41,20 +42,23 @@ void Server::setNonBlocking(int fd)
 		throw std::runtime_error("fcntl(F_SETFL) failed");
 }
 
-void Server::initListenSockets() {
-	std::map<int, std::pair<ListenConfig, std::size_t> > chosenByPort;
-	for (std::size_t serverIndex = 0; serverIndex < _config.servers().size(); ++serverIndex) {
+// Collects listen directives from the config and chooses the socket to open for each port.
+void Server::initListenSockets()
+{
+	std::map<int, ListenConfig> chosenByPort;
+	for (std::size_t serverIndex = 0; serverIndex < _config.servers().size(); ++serverIndex)
+	{
 		const ServerConfig &server = _config.servers()[serverIndex];
 		for (std::size_t listenIndex = 0; listenIndex < server.listens.size(); ++listenIndex)
 		{
 			const ListenConfig &listenConfig = server.listens[listenIndex];
-			std::map<int, std::pair<ListenConfig, std::size_t> >::iterator chosen = chosenByPort.find(listenConfig.port);
-			if (chosen == chosenByPort.end() || (isWildcardHost(listenConfig.host) && !isWildcardHost(chosen->second.first.host)))
-				chosenByPort[listenConfig.port] = std::make_pair(listenConfig, serverIndex);
+			std::map<int, ListenConfig>::iterator chosen = chosenByPort.find(listenConfig.port);
+			if (chosen == chosenByPort.end() || (isWildcardHost(listenConfig.host) && !isWildcardHost(chosen->second.host)))
+				chosenByPort[listenConfig.port] = listenConfig;
 		}
 	}
-	for (std::map<int, std::pair<ListenConfig, std::size_t> >::const_iterator it = chosenByPort.begin(); it != chosenByPort.end(); ++it)
-		openListenSocket(it->second.first, it->second.second);
+	for (std::map<int, ListenConfig>::const_iterator it = chosenByPort.begin(); it != chosenByPort.end(); ++it)
+		openListenSocket(it->second, 0);
 	if (_listenFds.empty())
 		throw std::runtime_error("configuration does not define any listen endpoints");
 }
@@ -123,7 +127,6 @@ void Server::openListenSocket(const ListenConfig &listenConfig, std::size_t serv
 	}
 	_listenFds.push_back(listenFd);
 	_listenOwners[listenFd] = serverIndex;
-	_listenPorts[listenFd] = listenConfig.port;
 	std::cout << "Listening on http://" << listenConfig.host << ':' << listenConfig.port << std::endl;
 }
 
@@ -186,9 +189,6 @@ void Server::acceptClients(int listenFd) {
 		std::map<int, std::size_t>::iterator owner = _listenOwners.find(listenFd);
 		if (owner != _listenOwners.end())
 			_clientServers[clientFd] = owner->second;
-		std::map<int, int>::iterator portIt = _listenPorts.find(listenFd);
-		if (portIt != _listenPorts.end())
-			_clientPorts[clientFd] = portIt->second;
 	}
 }
 
@@ -205,61 +205,28 @@ void Server::handleClientRead(int fd)
 	{
 		it->second.updateActivity();
 		it->second.inBuffer().append(buf, n);
-		processClientRequests(fd);
-		return;
-	}
-	closeClient(fd);
-}
 
-void Server::processClientRequests(int fd)
-{
-	std::map<int, Client>::iterator it = _clients.find(fd);
-	if (it == _clients.end())
-		return;
+		HttpRequest &req = _pendingRequests[fd];
+		bool headersJustCompleted = false;
+		std::string &buffer = it->second.inBuffer();
 
-	// Do not process next request if previous response is still in outBuffer
-	if (!it->second.outBuffer().empty())
-		return;
-
-	// Do not process next request if a CGI task is already running for this client
-	for (std::map<int, CgiTask>::const_iterator cgiIt = _activeCgis.begin(); cgiIt != _activeCgis.end(); ++cgiIt)
-	{
-		if (cgiIt->second.clientFd == fd)
-			return;
-	}
-
-	HttpRequest &req = _pendingRequests[fd];
-	std::string &buffer = it->second.inBuffer();
-
-	if (!req.headersComplete())
-	{
-		std::size_t headerEnd = buffer.find("\r\n\r\n");
-		if (headerEnd != std::string::npos)
+		if (!req.headersComplete())
 		{
-			std::size_t headerBytes = headerEnd + 4;
-			std::string headerPart = buffer.substr(0, headerBytes);
-			if (!req.parse(headerPart))
+			std::size_t headerEnd = buffer.find("\r\n\r\n");
+			if (headerEnd != std::string::npos)
 			{
-				HttpResponse response;
-				response.setError(400);
-				it->second.outBuffer() = response.toString();
-				buffer.clear();
-				_pendingRequests.erase(fd);
-				return;
-			}
-
-			std::size_t bodyBytesConsumed = 0;
-			if (req.isChunked())
-			{
-				std::size_t bodyAvailable = buffer.size() - headerBytes;
-				if (bodyAvailable > 0)
+				if (!req.parse(buffer))
 				{
-					req.appendBodyData(buffer.substr(headerBytes));
-					bodyBytesConsumed = bodyAvailable;
+					HttpResponse response;
+					response.setError(400, "400 Bad Request");
+					it->second.outBuffer() = response.toString();
+					buffer.clear();
+					_pendingRequests.erase(fd);
+					return;
 				}
-			}
-			else
-			{
+
+				std::size_t headerBytes = headerEnd + 4;
+				std::size_t bodyBytesConsumed = 0;
 				std::map<std::string, std::string>::const_iterator contentLengthIt = req._headers.find("content-length");
 				if (contentLengthIt != req._headers.end())
 				{
@@ -269,7 +236,7 @@ void Server::processClientRequests(int fd)
 					{
 						std::size_t bodyAvailable = buffer.size() - headerBytes;
 						std::size_t expectedBody = static_cast<std::size_t>(bodyLen);
-						std::size_t bodyToConsume = (bodyAvailable < expectedBody) ? bodyAvailable : expectedBody;
+						std::size_t bodyToConsume = bodyAvailable < expectedBody ? bodyAvailable : expectedBody;
 						if (bodyToConsume > 0)
 						{
 							req.appendBodyData(buffer.substr(headerBytes, bodyToConsume));
@@ -277,33 +244,25 @@ void Server::processClientRequests(int fd)
 						}
 					}
 				}
-			}
-			buffer.erase(0, headerBytes + bodyBytesConsumed);
-		}
-		else
-		{
-			if (it->second.isTimedOut(getServerForClient(fd).clientTimeout))
-			{
-				HttpResponse response;
-				response.setError(408);
-				it->second.outBuffer() = response.toString();
-				buffer.clear();
-				_pendingRequests.erase(fd);
-				return;
-			}
-			return;
-		}
-	}
-	else
-	{
-		if (!buffer.empty())
-		{
-			if (req.isChunked())
-			{
-				req.appendBodyData(buffer);
-				buffer.clear();
+				buffer.erase(0, headerBytes + bodyBytesConsumed);
+				headersJustCompleted = true;
 			}
 			else
+			{
+				if (it->second.isTimedOut(getServerForClient(fd).clientTimeout))
+				{
+					HttpResponse response;
+					response.setError(408, "408 Request Timeout");
+					it->second.outBuffer() = response.toString();
+					_pendingRequests.erase(fd);
+					return;
+				}
+				return;
+			}
+		}
+		if (req.headersComplete() && !req.bodyComplete())
+		{
+			if (!headersJustCompleted)
 			{
 				std::map<std::string, std::string>::const_iterator contentLengthIt = req._headers.find("content-length");
 				if (contentLengthIt != req._headers.end())
@@ -314,8 +273,7 @@ void Server::processClientRequests(int fd)
 					{
 						std::size_t bodyAvailable = buffer.size();
 						std::size_t expectedBody = static_cast<std::size_t>(bodyLen);
-						std::size_t remainingBody = (expectedBody > req._body.size()) ? (expectedBody - req._body.size()) : 0;
-						std::size_t bodyToConsume = (bodyAvailable < remainingBody) ? bodyAvailable : remainingBody;
+						std::size_t bodyToConsume = bodyAvailable < expectedBody ? bodyAvailable : expectedBody;
 						if (bodyToConsume > 0)
 						{
 							req.appendBodyData(buffer.substr(0, bodyToConsume));
@@ -325,58 +283,25 @@ void Server::processClientRequests(int fd)
 				}
 			}
 		}
-	}
 
-	bool isComplete = false;
-	try
-	{
-		isComplete = req.bodyComplete();
-	}
-	catch (const std::exception &e)
-	{
-		HttpResponse response;
-		response.setError(400);
-		it->second.outBuffer() = response.toString();
-		buffer.clear();
-		_pendingRequests.erase(fd);
-		return;
-	}
-
-	if (isComplete)
-	{
-		HttpResponse response;
-
-		std::size_t serverIdx = 0;
-		std::map<int, std::size_t>::iterator si = _clientServers.find(fd);
-		if (si != _clientServers.end())
-			serverIdx = si->second;
-
-		int clientPort = 8080;
-		std::map<int, int>::iterator cp = _clientPorts.find(fd);
-		if (cp != _clientPorts.end())
-			clientPort = cp->second;
-
-		std::map<std::string, std::string>::const_iterator hostIt = req._headers.find("host");
-		if (hostIt != req._headers.end())
+		if (req.bodyComplete())
 		{
-			std::string hostHeader = hostIt->second;
-			std::size_t colonPos = hostHeader.find(':');
-			if (colonPos != std::string::npos)
-				hostHeader = hostHeader.substr(0, colonPos);
+			HttpResponse response;
+			std::size_t serverIdx = 0;
+			std::map<int, std::size_t>::iterator si = _clientServers.find(fd);
+			if (si != _clientServers.end())
+				serverIdx = si->second;
 
-			bool found = false;
-			for (std::size_t i = 0; i < _config.servers().size() && !found; ++i)
+			std::map<std::string, std::string>::const_iterator hostIt = req._headers.find("host");
+			if (hostIt != req._headers.end())
 			{
-				bool listensOnPort = false;
-				for (std::size_t k = 0; k < _config.servers()[i].listens.size(); ++k)
-				{
-					if (_config.servers()[i].listens[k].port == clientPort)
-					{
-						listensOnPort = true;
-						break;
-					}
-				}
-				if (listensOnPort)
+				std::string hostHeader = hostIt->second;
+				std::size_t colonPos = hostHeader.find(':');
+				if (colonPos != std::string::npos)
+					hostHeader = hostHeader.substr(0, colonPos);
+
+				bool found = false;
+				for (std::size_t i = 0; i < _config.servers().size() && !found; ++i)
 				{
 					for (std::size_t j = 0; j < _config.servers()[i].serverNames.size() && !found; ++j)
 					{
@@ -388,45 +313,50 @@ void Server::processClientRequests(int fd)
 					}
 				}
 			}
-		}
-
-		Router router;
-		CgiFds cgi = router.route(req, response, _config.servers()[serverIdx]);
-
-		bool keepAlive = shouldKeepAlive(req);
-		it->second.setKeepAlive(keepAlive);
-
-		if (cgi.pid > 0)
-		{
-			CgiTask task;
-			task.pid = cgi.pid;
-			task.stdoutFd = cgi.readFd;
-			task.stdinFd = cgi.writeFd;
-			task.clientFd = fd;
-			task.outputData = "";
-			task.inputData = req._body;
-			task.writeOffset = 0;
-			task.startTime = std::time(NULL);
-			if (task.inputData.empty())
+			Router router;
+			CgiFds cgi = router.route(req, response, _config.servers()[serverIdx]);
+			bool keepAlive = shouldKeepAlive(req);
+			it->second.setKeepAlive(keepAlive);
+			if (cgi.pid > 0)
 			{
-				if (task.stdinFd >= 0)
+				CgiTask task;
+				task.pid = cgi.pid;
+				task.stdoutFd = cgi.readFd;
+				task.stdinFd = cgi.writeFd;
+				task.clientFd = fd; // client socket fd
+				task.outputData = "";
+				task.inputData = req._body; // POST data to send to CGI
+				task.writeOffset = 0;
+				task.startTime = std::time(NULL);
+				if (task.inputData.empty())
 				{
-					::close(task.stdinFd);
-					task.stdinFd = -1;
+					if (task.stdinFd >= 0)
+					{
+						::close(task.stdinFd);
+						task.stdinFd = -1;
+					}
 				}
+				_activeCgis[cgi.readFd] = task;
+				_pendingRequests.erase(fd);
+				return; // Freeze the request handling until CGI is done
 			}
-			_activeCgis[cgi.readFd] = task;
+			// if it is not a CGI request, we continue to send the static response
+			if (keepAlive)
+				response.setHeader("Connection", "keep-alive");
+			else
+				response.setHeader("Connection", "close");
 			_pendingRequests.erase(fd);
+
+			it->second.outBuffer() = response.toString();
 			return;
 		}
-
-		if (keepAlive)
-			response.setHeader("Connection", "keep-alive");
-		else
-			response.setHeader("Connection", "close");
-
+		return;
+	}
+	if (n <= 0)
+	{
 		_pendingRequests.erase(fd);
-		it->second.outBuffer() = response.toString();
+		closeClient(fd);
+		return;
 	}
 }
 
@@ -441,23 +371,21 @@ void Server::handleClientWrite(int fd) {
 		return;
 	ssize_t n = ::send(fd, out.c_str(), out.size(), 0);
 	if (n <= 0)
-	{
-		closeClient(fd);
-		return;
-	}
-
-	out.erase(0, n);
-	it->second.updateActivity();
-
-	if (out.empty()) {
-		if (it->second.keepAlive()) {
-			it->second.updateActivity();
-			if (!it->second.inBuffer().empty())
-				processClientRequests(fd);
-		} else {
-			closeClient(fd);
-		}
-	}
+    {
+        closeClient(fd);
+        return;
+    }
+    out.erase(0, n);
+    it->second.updateActivity();
+    if (out.empty()) {
+        if (it->second.keepAlive())
+		{
+            it->second.clearBuffers();
+            it->second.updateActivity();
+        }
+		else
+            closeClient(fd);
+    }
 }
 
 // Closes one client connection and removes any CGI task that was spawned for it.
@@ -488,7 +416,6 @@ void Server::closeClient(int fd) {
 	_clients.erase(it);
 	_pendingRequests.erase(fd);
 	_clientServers.erase(fd);
-	_clientPorts.erase(fd);
 }
 
 bool Server::isListenFd(int fd) const
@@ -518,13 +445,9 @@ bool Server::shouldKeepAlive(const HttpRequest &req) const
 		std::string val = it->second;
 		for (std::size_t i = 0; i < val.size(); ++i)
 			val[i] = static_cast<char>(std::tolower(static_cast<unsigned char>(val[i])));
-		if (val.find("close") != std::string::npos)
-			return false;
 		if (val.find("keep-alive") != std::string::npos)
 			return true;
 	}
-	if (req._version == "HTTP/1.1")
-		return true;
 	return false;
 }
 
@@ -584,7 +507,7 @@ void Server::checkClientTimeouts()
 			if (it->second.outBuffer().empty() && _pendingRequests.find(fd) != _pendingRequests.end())
 			{
 				HttpResponse response;
-				response.setError(408);
+				response.setError(408, "408 Request Timeout");
 				response.setHeader("Connection", "close");
 				it->second.setKeepAlive(false);
 				it->second.outBuffer() = response.toString();

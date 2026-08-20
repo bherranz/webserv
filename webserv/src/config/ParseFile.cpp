@@ -126,5 +126,5 @@ void Config::load(const std::string &path)
 {
 	_servers = ConfigParser::parseFile(path);
 	validate();
-	//print();
+	print();
 }

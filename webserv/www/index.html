@@ -233,17 +233,36 @@ printf "5\r\nHello\r\n0\r\n\r\n" | curl -X POST -H "Transfer-Encoding: chunked" 
       <p>301 Moved Permanently via <code>return</code> directive.</p>
       <a class="btn btn-get" href="/old_path">/old_path &rarr; /uploads</a>
     </div>
+
     <div class="card">
       <h3>Error pages</h3>
       <p>Built-in and custom error pages (<code>error_page</code> directive).</p>
+      
+      <div style="margin-top: 10px; margin-bottom: 4px; font-size: 0.85em; color: #666;"><strong>Trigger Errors (Alert / Direct):</strong></div>
       <a class="btn btn-get" href="/nonexistent">404</a>
       <a class="btn btn-get" href="/cgi-bin/error.py">500</a>
-      <a class="btn btn-get" href="/cgi-bin/timeout.py">504</a>
-      <button class="btn btn-get" onclick="fetch('/',{method:'DELETE'})
-        .then(r=>r.status===405?alert('405 OK'):alert('Got '+r.status))">405</button>
+      <button class="btn btn-get" onclick="fetch('/files/',{method:'DELETE'})
+  			.then(r=>r.status===405?alert('405 OK'):alert('Got '+r.status))">405</button>
       <button class="btn btn-get" onclick="fetch('/',{method:'POST',
         body:'x'.repeat(20000)}).then(r=>alert('413 body='+r.status))">413</button>
-    </div>
+	  <button class="btn btn-get" onclick="fetch('/uploads/')
+  			.then(r=>r.status===403?alert('403 OK'):alert('Got '+r.status))">403</button>
+	  <button class="btn btn-get" onclick="fetch('/',{method:'INVENTADO'})
+			.then(r=>r.status===501?alert('501 OK'):alert('Got '+r.status))">501</button>
+      <div style="margin-top: 12px; margin-bottom: 4px; font-size: 0.85em; color: #666;"><strong>View HTML Templates:</strong></div>
+      <a class="btn btn-get" href="/errors/400.html" target="_blank" style="background: #f1f5f9; color: #334155;">📄 400.html</a>
+      <a class="btn btn-get" href="/errors/403.html" target="_blank" style="background: #f1f5f9; color: #334155;">📄 403.html</a>
+	  <a class="btn btn-get" href="/errors/404.html" target="_blank" style="background: #f1f5f9; color: #334155;">📄 404.html</a> 
+	  <a class="btn btn-get" href="/errors/405.html" target="_blank" style="background: #f1f5f9; color: #334155;">📄 405.html</a>
+	  <a class="btn btn-get" href="/errors/408.html" target="_blank" style="background: #f1f5f9; color: #334155;">📄 408.html</a>
+	  <a class="btn btn-get" href="/errors/413.html" target="_blank" style="background: #f1f5f9; color: #334155;">📄 413.html</a>
+	  <a class="btn btn-get" href="/errors/500.html" target="_blank" style="background: #f1f5f9; color: #334155;">📄 500.html</a>
+      <a class="btn btn-get" href="/errors/501.html" target="_blank" style="background: #f1f5f9; color: #334155;">📄 501.html</a>	
+	  <a class="btn btn-get" href="/errors/502.html" target="_blank" style="background: #f1f5f9; color: #334155;">📄 502.html</a>	
+	  <a class="btn btn-get" href="/errors/503.html" target="_blank" style="background: #f1f5f9; color: #334155;">📄 503.html</a>	
+	  <a class="btn btn-get" href="/errors/504.html" target="_blank" style="background: #f1f5f9; color: #334155;">📄 504.html</a>	
+	</div>
+	
     <div class="card">
       <h3>Keep-alive</h3>
       <p>Reuse TCP connections for multiple requests (configurable timeout).</p>

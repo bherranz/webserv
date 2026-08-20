@@ -4,6 +4,7 @@
 #include <sstream>
 #include <map>
 #include "Utils.hpp"
+#include "Config.hpp"
 
 class HttpResponse
 {
@@ -22,8 +23,7 @@ class HttpResponse
 	int statusCode() const;
 
 	void clear();
-	void setError(int code, const std::string &detail = "");
-
+	void setError(int code, const std::string &detail, const ServerConfig *config);
 	static std::string reasonPhrase(int code);
 
 	private:

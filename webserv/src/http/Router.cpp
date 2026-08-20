@@ -380,7 +380,7 @@ void Router::handleAutoindex(const std::string &dirPath, HttpResponse &res)
 	DIR *dir = opendir(dirPath.c_str());
 	if (dir == NULL)
 	{
-		res.setError(403);
+		res.setError(403, "403 Forbidden");
 		return;
 	}
 
@@ -437,7 +437,7 @@ void Router::buildErrorResponse(HttpResponse &res, int code, const ServerConfig 
 		}
 	}
 
-	res.setError(code);
+	res.setError(code, NULL);
 }
 
 bool Router::parseMultipart(const std::string &body, const std::string &boundary,

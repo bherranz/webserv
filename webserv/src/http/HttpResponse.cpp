@@ -44,21 +44,50 @@ void HttpResponse::clear()
 	_body.clear();
 }
 
-void HttpResponse::setError(int code, const std::string &detail)
+void HttpResponse::setError(int code, const std::string &detail, const ServerConfig *config)
 {
-	_statusCode = code;
-	_statusReason = reasonPhrase(code);
 
-	std::string codeStr = Utils::toString(code);
-	std::string body = "<html><head><title>" + codeStr + " " + _statusReason + "</title></head><body>";
-	body += "<h1>" + codeStr + " " + _statusReason + "</h1>";
-	if (!detail.empty())
-		body += "<p>" + detail + "</p>";
-	body += "</body></html>";
+    _statusCode = code;
+    _statusReason = reasonPhrase(code);
 
-	setBody(body);
-	setContentType("text/html");
-	setContentLength(body.size());
+    // 1. INTENTO DE PÁGINA PERSONALIZADA
+    // Si pasamos el config y el código de error existe en el mapa:
+	std::cout << "HOLA PUTO SET ERROR. Count:s" << config->errorPages.count(code) << std::endl;
+	
+    if (config != NULL && config->errorPages.count(code) > 0) 
+    {
+        // Obtenemos la ruta (ej. "/errors/500.html")
+        std::string path = config->errorPages.find(code)->second; 
+        
+        // Ajustamos la ruta. Dependiendo de tu lógica, puede que necesites
+        // concatenarla con el 'root' del servidor. Aquí asumo una ruta relativa "./www"
+        std::string fullPath = config->root + path;
+
+        std::ifstream file(fullPath.c_str());
+        if (file.is_open()) 
+        {
+            std::stringstream buffer;
+            buffer << file.rdbuf();
+            std::string body = buffer.str();
+
+            setBody(body);
+            setContentType("text/html");
+            setContentLength(body.size());
+            return; // ¡Éxito! Salimos de la función sin usar el fallback
+        }
+    }
+
+    // 2. FALLBACK DE EMERGENCIA (Tu código original)
+    std::string codeStr = Utils::toString(code);
+    std::string body = "<html><head><title>" + codeStr + " " + _statusReason + "</title></head><body>";
+    body += "<h1>" + codeStr + " " + _statusReason + "</h1>";
+    if (!detail.empty())
+        body += "<p>" + detail + "</p>";
+    body += "</body></html>";
+
+    setBody(body);
+    setContentType("text/html");
+    setContentLength(body.size());
 }
 
 std::string HttpResponse::toString() const
